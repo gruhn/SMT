@@ -1,0 +1,30 @@
+cabal-version:      2.4
+name:               SAT
+version:            0.1.0.0
+author:             Niklas Gruhn
+maintainer:         niklas@gruhn.me
+extra-source-files: CHANGELOG.md
+
+library
+    exposed-modules:  SAT
+                    , Expr
+                    , CNF
+    other-modules:    Utils
+    build-depends:    base ^>=4.14.3.0
+                    , megaparsec
+                    , containers
+                    , parser-combinators
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+test-suite test
+    type:             exitcode-stdio-1.0 
+    main-is:          Test.hs
+    build-depends:    base ^>=4.14.3.0
+                    , SAT
+                    , tasty
+                    , tasty-hunit
+                    , tasty-quickcheck
+                    , QuickCheck
+    hs-source-dirs:   test
+    default-language: Haskell2010
