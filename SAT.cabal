@@ -6,7 +6,7 @@ maintainer:         niklas@gruhn.me
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  SAT
+    exposed-modules:  LinearResolution
                     , Expr
                     , CNF
     other-modules:    Utils

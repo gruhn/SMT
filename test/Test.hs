@@ -7,8 +7,8 @@ import Test.Tasty.QuickCheck
 import Data.String (fromString)
 
 import Expr 
-import SAT 
 import CNF
+import qualified LinearResolution as LR
 
 main = defaultMain tests
 
@@ -21,12 +21,14 @@ tests = testGroup "All tests"
 propertyBasedTests :: TestTree
 propertyBasedTests = -- localOption (QuickCheckReplay (Just 12345)) $
   testGroup "Property tests"
-    [ -- testProperty "Found assignment satisfies formula" prop_FoundAssignmentSatisfiesFormula 
-      testProperty "Expression parsing is inverse of showing" prop_ExprParseIsInverseOfShow 
-    , testProperty "`removeConstants` drops all boolean constants from an expression" prop_RemovesAllBooleanConstants ]
+    [ testProperty "Expression parsing is inverse of showing" prop_ExprParseIsInverseOfShow 
+    , testProperty "`removeConstants` drops all boolean constants from an expression" prop_RemovesAllBooleanConstants
 
-    -- TODO: test that various expression transformations produce equivalent formulas or 
-    -- at least _satisfiability equivalent_ formulas.
+    -- TODO: test that various expression transformations produce equivalent formulas or at least _satisfiability equivalent_ formulas.
+
+    -- , testProperty "Found assignment satisfies formula" prop_FoundAssignmentSatisfiesFormula 
+    ]
+
 
 instance Arbitrary Atom where
   arbitrary = frequency [ (4, var), (1, pure T), (1, pure F) ]
@@ -55,11 +57,11 @@ instance Arbitrary Expr where
       e1 `Impl` e2  -> [e1, e2] ++ [ e1' `Impl`  e2' | (e1', e2') <- shrink (e1, e2) ]
       e1 `Equiv` e2 -> [e1, e2] ++ [ e1' `Equiv` e2' | (e1', e2') <- shrink (e1, e2) ]
 
-prop_FoundAssignmentSatisfiesFormula :: Expr -> Bool
-prop_FoundAssignmentSatisfiesFormula expr = 
-  case sat expr of 
-    Just assignment -> eval assignment expr
-    Nothing         -> True
+-- prop_FoundAssignmentSatisfiesFormula :: Expr -> Bool
+-- prop_FoundAssignmentSatisfiesFormula expr = 
+--   case sat expr of 
+--     Just assignment -> eval assignment expr
+--     Nothing         -> True
 
 prop_ExprParseIsInverseOfShow :: Expr -> Bool
 prop_ExprParseIsInverseOfShow expr = 
@@ -103,10 +105,10 @@ expr6 = "(-((b -> b) | (-a)))"
 
 unitTests :: TestTree
 unitTests = testGroup "Linear Resolution" 
-  [ testCase "expr1 is satisfiable"   $ satLR expr1 @?= True
-  , testCase "expr2 is unsatisfiable" $ satLR expr2 @?= False 
-  , testCase "expr3 is satisfiable"   $ satLR expr3 @?= True
-  , testCase "expr4 is unsatisfiable" $ satLR expr4 @?= False 
-  , testCase "expr5 is unsatisfiable" $ satLR expr5 @?= False 
-  , testCase "expr6 is unsatisfiable" $ satLR expr6 @?= False 
+  [ testCase "expr1 is satisfiable"   $ LR.sat expr1 @?= True
+  , testCase "expr2 is unsatisfiable" $ LR.sat expr2 @?= False 
+  , testCase "expr3 is satisfiable"   $ LR.sat expr3 @?= True
+  , testCase "expr4 is unsatisfiable" $ LR.sat expr4 @?= False 
+  , testCase "expr5 is unsatisfiable" $ LR.sat expr5 @?= False 
+  , testCase "expr6 is unsatisfiable" $ LR.sat expr6 @?= False 
   ]

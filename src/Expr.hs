@@ -59,6 +59,20 @@ atoms expr = case expr of
   Impl ex ex' -> atoms ex <> atoms ex'
   Equiv ex ex' -> atoms ex <> atoms ex'
 
+eval :: (String -> Bool) -> Expr -> Bool
+eval interpret = go
+  where
+    go :: Expr -> Bool
+    go formula = case formula of
+      Atom (V var)  -> interpret var
+      Atom T        -> True
+      Atom F        -> False
+      Not p         -> not (go p)
+      p1 `And` p2   -> go p1 && go p2
+      p1 `Or` p2    -> go p1 || go p2
+      p1 `Impl` p2  -> go p1 <= go p2
+      p1 `Equiv` p2 -> go p1 == go p2
+
 instance IsString Expr where
   fromString str = 
     case P.parse (parser <* P.eof) "" str of

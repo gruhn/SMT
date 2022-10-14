@@ -1,28 +1,14 @@
-module SAT where
+module LinearResolution (sat) where
 
+import CNF (conjunctiveNormalForm, CNF, Literal (..), Clause)
+import Expr (Expr)
 import qualified Data.Set as S
-import Expr (Expr(..), Atom(..))
-import CNF (CNF, tseytin, conjunctiveNormalForm, variables, Literal (..), Clause)
 import Data.Foldable (toList)
 import Control.Monad (guard)
 import Utils (fixpoint)
 
-dpll :: CNF -> Bool
-dpll = undefined
-
-eval :: (String -> Bool) -> Expr -> Bool
-eval interpret = go
-  where
-    go :: Expr -> Bool
-    go formula = case formula of
-      Atom (V var)  -> interpret var
-      Atom T        -> True
-      Atom F        -> False
-      Not p         -> not (go p)
-      p1 `And` p2   -> go p1 && go p2
-      p1 `Or` p2    -> go p1 || go p2
-      p1 `Impl` p2  -> go p1 <= go p2
-      p1 `Equiv` p2 -> go p1 == go p2
+sat :: Expr -> Bool
+sat = linearResolution . conjunctiveNormalForm
 
 linearResolution :: CNF -> Bool
 linearResolution cnf
@@ -56,9 +42,3 @@ linearResolution cnf
     can_derive_empty_clause_from :: Clause -> Bool
     can_derive_empty_clause_from initial_resolvent =
       null . fst $ fixpoint step (initial_resolvent, cnf)
-
-satLR :: Expr -> Bool
-satLR = linearResolution . conjunctiveNormalForm
-
-sat :: Expr -> Maybe (String -> Bool)
-sat = error "TODO: implement sat"
