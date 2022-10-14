@@ -43,6 +43,7 @@ negationNormalForm = go_id
 -- The Tseytin transformation turns a formula into an equivalent
 -- formula that in turn can be transformed into CNF in linear space
 -- at the cost of adding new variables.
+-- TODO: if necessary rename existing variables to avoid collision
 tseytin :: Expr -> Expr
 tseytin = foldr And (var 1) . snd . go 1
   where
