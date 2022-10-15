@@ -15,6 +15,10 @@ variableName :: Literal -> String
 variableName (Pos name) = name
 variableName (Neg name) = name
 
+complement :: Literal -> Literal
+complement (Pos name) = Neg name
+complement (Neg name) = Pos name
+
 -- substitute syntax sugar, i.e. implication and equivalence operators, with and/or/not
 desugar :: Expr -> Expr
 desugar (e1 `Impl` e2)  = Not e1 `Or` e2
@@ -45,10 +49,8 @@ negationNormalForm = go_id
 -- formula that in turn can be transformed into CNF in linear space
 -- at the cost of adding new variables.
 tseytin :: Expr -> Expr
-tseytin = foldr And (var 1) . trd . go 0 . rename escape
+tseytin = foldr And (var 1) . snd . go 1 . rename escape
   where
-    trd (_,_,x) = x
-
     var i = Atom $ V $ 'h' : show i
 
     -- If expr already contains variables named h* then rename
@@ -56,33 +58,37 @@ tseytin = foldr And (var 1) . trd . go 0 . rename escape
     escape ('h':rest) = "hh" <> rest
     escape var = var
 
-    go :: Int -> Expr -> (Int, Expr, [Expr])
+    go :: Int -> Expr -> (Int, [Expr])
     go i expr = case expr of
-      Atom at -> (i, Atom at, [])
-      Not ex -> (j, var i, equiv : sub_ex)
+      Atom at -> (i, [Atom at])
+      Not (Atom at) -> (i, [var i `Equiv` Not (Atom at)])
+      Not ex -> (j, eq : sub_ex)
         where
-          (j, ex', sub_ex) = go (i+1) ex
-          equiv = Equiv (var i) (Not ex')
-      And ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
+          eq = Equiv (var i) $ Not (var $ i+1)
+          (j, sub_ex) = go (i+1) ex
+      And ex1 ex2   -> go_binary i And ex1 ex2
+      Or ex1 ex2    -> go_binary i Or ex1 ex2
+      Impl ex1 ex2  -> go_binary i Impl ex1 ex2
+      Equiv ex1 ex2 -> go_binary i Equiv ex1 ex2
+
+    go_binary :: Int -> (Expr -> Expr -> Expr) -> Expr -> Expr -> (Int, [Expr])
+    go_binary i op ex_l ex_r = case (ex_l, ex_r) of
+      (Atom at1, Atom at2) -> (i, [eq])
         where
-          (j, ex1', sub_ex1) = go (i+1) ex1
-          (k, ex2', sub_ex2) = go j ex1
-          equiv = Equiv (var i) (And ex1' ex2')
-      Or ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
-        where 
-          (j, ex1', sub_ex1) = go (i+1) ex1
-          (k, ex2', sub_ex2) = go j ex2
-          equiv = Equiv (var i) (Or ex1' ex2')
-      Impl ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
+          eq = Equiv (var i) $ op (Atom at1) (Atom at2)
+      (ex1, Atom at2) -> (j, eq : sub_ex1)
         where
-          (j, ex1', sub_ex1) = go (i+1) ex1
-          (k, ex2', sub_ex2) = go j ex2
-          equiv = Equiv (var i) (Impl ex1' ex2')
-      Equiv ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
+          eq = Equiv (var i) $ op (var $ i+1) (Atom at2)
+          (j, sub_ex1) = go (i+1) ex1
+      (Atom at1, ex2) -> (j, eq : sub_ex2)
         where
-          (j, ex1', sub_ex1) = go (i+1) ex1
-          (k, ex2', sub_ex2) = go j ex2
-          equiv = Equiv (var i) (Equiv ex1' ex2')
+          eq = Equiv (var i) $ op (Atom at1) (var $ i+1)
+          (j, sub_ex2) = go (i+1) ex2
+      (ex1, ex2) -> (k, eq : sub_ex1 ++ sub_ex2)
+        where
+          eq = Equiv (var i) $ op (var $ i+1) (var $ j+1)
+          (j, sub_ex1) = go (i+1) ex1
+          (k, sub_ex2) = go (j+1) ex2
 
 conjunctiveNormalForm :: Expr -> CNF
 conjunctiveNormalForm = 

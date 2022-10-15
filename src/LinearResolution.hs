@@ -1,6 +1,6 @@
 module LinearResolution (sat) where
 
-import CNF (conjunctiveNormalForm, CNF, Literal (..), Clause)
+import CNF (conjunctiveNormalForm, CNF, Literal (..), Clause, complement)
 import Expr (Expr)
 import qualified Data.Set as S
 import Data.Foldable (toList)
@@ -21,23 +21,19 @@ linearResolution = not . any (S.empty `elem`) . searchTree
 searchTree :: CNF -> Forest Clause
 searchTree cnf = State.evalState (unfoldForestM expand $ toList cnf) cnf
   where
-    negate :: Literal -> Literal
-    negate (Pos var) = Neg var
-    negate (Neg var) = Pos var
-
     resolve_with :: Clause -> Clause -> Literal -> Clause
     resolve_with c1 c2 lit =
-      S.delete lit c1 `S.union` S.delete (negate lit) c2
+      S.delete lit c1 `S.union` S.delete (complement lit) c2
 
     no_contradition :: Clause -> Bool
     no_contradition clause = 
-      all ((`notElem` clause) . negate) (toList clause)
+      all ((`notElem` clause) . complement) (toList clause)
 
     next_resolvents :: Clause -> CNF -> [Clause]
     next_resolvents resolvent derived_clauses = do
       literal <- toList resolvent
       clause  <- toList derived_clauses
-      guard (negate literal `elem` clause) 
+      guard (complement literal `elem` clause) 
       let resolvent' = resolve_with resolvent clause literal
       guard (no_contradition resolvent')
       guard (resolvent' `notElem` derived_clauses) -- skip already derived clauses

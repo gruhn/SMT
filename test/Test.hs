@@ -11,6 +11,7 @@ import Expr
 import CNF
 import qualified LinearResolution as LR
 import Debug.Trace (trace)
+import qualified DPLL
 
 main = defaultMain tests
 
@@ -25,7 +26,10 @@ propertyBasedTests =
   testGroup "Property tests"
     [ testProperty "Expression parsing is inverse of showing" prop_ExprParseIsInverseOfShow 
     , testProperty "`removeConstants` drops all boolean constants from an expression" prop_RemovesAllBooleanConstants
-    -- , testProperty "Tseytin transformation preserves satisfiability" prop_TseytinPreservesSatisfiability
+
+    -- TODO: solver still slow for these tests:
+    , testProperty "Tseytin transformation preserves satisfiability" prop_TseytinPreservesSatisfiability
+    , testProperty "A formula is either satisfiable or its negation is" prop_EitherSatisfiableOrNegationIs
     -- , testProperty "Found assignment satisfies formula" prop_FoundAssignmentSatisfiesFormula 
     ]
 
@@ -35,7 +39,7 @@ instance Arbitrary Atom where
       var :: Gen Atom
       var = do 
         -- FIXME: magic number
-        i <- chooseInt (0, 5)
+        i <- chooseInt (0, 10)
         return $ V ('x' : show i)
 
 instance Arbitrary Expr where
@@ -82,10 +86,13 @@ prop_RemovesAllBooleanConstants expr = is_trivial expr' || not (contains_constan
     contains_constant :: Expr -> Bool
     contains_constant = any is_constant . atoms
 
--- TODO: linear resolution implementation is too slow for this test
--- prop_TseytinPreservesSatisfiability :: Expr -> Bool
--- prop_TseytinPreservesSatisfiability expr =
---   LR.sat expr == LR.sat (tseytin $ trace (show expr) $ expr) 
+prop_TseytinPreservesSatisfiability :: Expr -> Bool
+prop_TseytinPreservesSatisfiability expr =
+  DPLL.sat expr == DPLL.sat (tseytin $ trace (show expr) expr) 
+
+prop_EitherSatisfiableOrNegationIs :: Expr -> Bool
+prop_EitherSatisfiableOrNegationIs expr =
+  DPLL.sat (trace (show expr) expr) || DPLL.sat (Not expr)
 
 -- Unit Tests
 
@@ -108,11 +115,21 @@ expr6 :: Expr
 expr6 = "(-((b -> b) | (-a)))"
 
 unitTests :: TestTree
-unitTests = testGroup "Linear Resolution" 
-  [ testCase "expr1 is satisfiable"   $ LR.sat expr1 @?= True
-  , testCase "expr2 is unsatisfiable" $ LR.sat expr2 @?= False 
-  , testCase "expr3 is satisfiable"   $ LR.sat expr3 @?= True
-  , testCase "expr4 is unsatisfiable" $ LR.sat expr4 @?= False 
-  , testCase "expr5 is unsatisfiable" $ LR.sat expr5 @?= False 
-  , testCase "expr6 is unsatisfiable" $ LR.sat expr6 @?= False 
+unitTests = testGroup "Unit Tests"
+  [ testGroup "Linear Resolution" 
+    [ testCase "expr1 is satisfiable"   $ LR.sat expr1 @?= True
+    , testCase "expr2 is unsatisfiable" $ LR.sat expr2 @?= False 
+    , testCase "expr3 is satisfiable"   $ LR.sat expr3 @?= True
+    , testCase "expr4 is unsatisfiable" $ LR.sat expr4 @?= False 
+    , testCase "expr5 is unsatisfiable" $ LR.sat expr5 @?= False 
+    , testCase "expr6 is unsatisfiable" $ LR.sat expr6 @?= False 
+    ]
+  , testGroup "DPLL"
+    [ testCase "expr1 is satisfiable"   $ DPLL.sat expr1 @?= True
+    , testCase "expr2 is unsatisfiable" $ DPLL.sat expr2 @?= False 
+    , testCase "expr3 is satisfiable"   $ DPLL.sat expr3 @?= True
+    , testCase "expr4 is unsatisfiable" $ DPLL.sat expr4 @?= False 
+    , testCase "expr5 is unsatisfiable" $ DPLL.sat expr5 @?= False 
+    , testCase "expr6 is unsatisfiable" $ DPLL.sat expr6 @?= False 
+    ]
   ]
