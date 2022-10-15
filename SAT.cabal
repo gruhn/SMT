@@ -6,7 +6,8 @@ maintainer:         niklas@gruhn.me
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  DPLL
+    exposed-modules:  CDCL
+                    , DPLL
                     , LinearResolution
                     , Expr
                     , CNF
