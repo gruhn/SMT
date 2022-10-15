@@ -24,13 +24,15 @@ tests = testGroup "All tests"
 propertyBasedTests :: TestTree
 propertyBasedTests =
   testGroup "Property tests"
-    [ testProperty "Expression parsing is inverse of showing" prop_ExprParseIsInverseOfShow 
-    , testProperty "`removeConstants` drops all boolean constants from an expression" prop_RemovesAllBooleanConstants
+    [ testProperty "Expression parsing is inverse of showing" prop_expr_parse_is_inverse_of_show 
+    , testProperty "`removeConstants` drops all boolean constants from an expression" prop_removes_all_boolean_constants
+    , testProperty "A formula itself or its negation is satisfiable" prop_itself_or_negation_is_satisfiable
 
-    -- TODO: solver still slow for these tests:
-    , testProperty "Tseytin transformation preserves satisfiability" prop_TseytinPreservesSatisfiability
-    , testProperty "A formula is either satisfiable or its negation is" prop_EitherSatisfiableOrNegationIs
-    -- , testProperty "Found assignment satisfies formula" prop_FoundAssignmentSatisfiesFormula 
+    -- TODO: tests too slow:
+    -- , testProperty "Tseytin transformation preserves satisfiability" prop_tseytin_preserves_satisfiability
+    -- , testProperty "Linear resolution and DPLL are equivalent" prop_linear_resolution_and_dpll_are_equivalent
+
+    -- , testProperty "Found assignment satisfies formula" prop_found_assigment_satisfies_formula 
     ]
 
 instance Arbitrary Atom where
@@ -60,18 +62,18 @@ instance Arbitrary Expr where
       e1 `Impl` e2  -> [e1, e2] ++ [ e1' `Impl`  e2' | (e1', e2') <- shrink (e1, e2) ]
       e1 `Equiv` e2 -> [e1, e2] ++ [ e1' `Equiv` e2' | (e1', e2') <- shrink (e1, e2) ]
 
--- prop_FoundAssignmentSatisfiesFormula :: Expr -> Bool
--- prop_FoundAssignmentSatisfiesFormula expr = 
+-- prop_found_assigment_satisfies_formula :: Expr -> Bool
+-- prop_found_assigment_satisfies_formula expr = 
 --   case sat expr of 
 --     Just assignment -> assignment |= expr
 --     Nothing         -> True
 
-prop_ExprParseIsInverseOfShow :: Expr -> Bool
-prop_ExprParseIsInverseOfShow expr = 
+prop_expr_parse_is_inverse_of_show :: Expr -> Bool
+prop_expr_parse_is_inverse_of_show expr = 
   (fromString . show $ expr) == expr
 
-prop_RemovesAllBooleanConstants :: Expr -> Bool
-prop_RemovesAllBooleanConstants expr = is_trivial expr' || not (contains_constant expr')
+prop_removes_all_boolean_constants :: Expr -> Bool
+prop_removes_all_boolean_constants expr = is_trivial expr' || not (contains_constant expr')
   where
     expr' = removeConstants expr
 
@@ -86,13 +88,17 @@ prop_RemovesAllBooleanConstants expr = is_trivial expr' || not (contains_constan
     contains_constant :: Expr -> Bool
     contains_constant = any is_constant . atoms
 
-prop_TseytinPreservesSatisfiability :: Expr -> Bool
-prop_TseytinPreservesSatisfiability expr =
-  DPLL.sat expr == DPLL.sat (tseytin $ trace (show expr) expr) 
+prop_tseytin_preserves_satisfiability :: Expr -> Bool
+prop_tseytin_preserves_satisfiability expr =
+  DPLL.sat expr == DPLL.sat (tseytin expr) 
 
-prop_EitherSatisfiableOrNegationIs :: Expr -> Bool
-prop_EitherSatisfiableOrNegationIs expr =
-  DPLL.sat (trace (show expr) expr) || DPLL.sat (Not expr)
+prop_linear_resolution_and_dpll_are_equivalent :: Expr -> Bool
+prop_linear_resolution_and_dpll_are_equivalent expr =
+  DPLL.sat (tseytin expr) == LR.sat (tseytin expr)
+
+prop_itself_or_negation_is_satisfiable :: Expr -> Bool
+prop_itself_or_negation_is_satisfiable expr =
+  DPLL.sat (tseytin expr) || DPLL.sat (tseytin $ Not expr)
 
 -- Unit Tests
 
