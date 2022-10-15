@@ -1,5 +1,6 @@
 module CNF where
-import Expr (Atom (..), Expr (..))
+
+import Expr (Atom (..), Expr (..), rename)
 import qualified Data.Set as S
 import Utils (fixpoint)
 
@@ -27,8 +28,8 @@ negationNormalForm = go_id
     go_id expr = case expr of
       Not e         -> go_not e
       Atom e        -> Atom e
-      e1 `And`   e2 -> go_id e1 `And`   go_id e2
-      e1 `Or`    e2 -> go_id e1 `Or`    go_id e2
+      e1 `And` e2   -> go_id e1 `And`   go_id e2
+      e1 `Or` e2    -> go_id e1 `Or`    go_id e2
       impl_or_equiv -> go_id (desugar impl_or_equiv)
 
     go_not :: Expr -> Expr
@@ -36,46 +37,52 @@ negationNormalForm = go_id
       Not e         -> go_id e
       Atom e        -> Not (Atom e)
       -- DeMorgan rules:
-      e1 `And`   e2 -> go_not e1 `Or`   go_not e2
-      e1 `Or`    e2 -> go_not e1 `And`    go_not e2
+      e1 `And` e2   -> go_not e1 `Or`   go_not e2
+      e1 `Or` e2    -> go_not e1 `And`    go_not e2
       impl_or_equiv -> go_not (desugar impl_or_equiv)
 
 -- The Tseytin transformation turns a formula into an equivalent
 -- formula that in turn can be transformed into CNF in linear space
 -- at the cost of adding new variables.
--- TODO: if necessary rename existing variables to avoid collision
 tseytin :: Expr -> Expr
-tseytin = foldr And (var 1) . snd . go 1
+tseytin = foldr And (var 1) . trd . go 0 . rename escape
   where
+    trd (_,_,x) = x
+
     var i = Atom $ V $ 'h' : show i
 
-    go :: Int -> Expr -> (Int, [Expr])
+    -- If expr already contains variables named h* then rename
+    -- them to avoid collision with the newly added variables.
+    escape ('h':rest) = "hh" <> rest
+    escape var = var
+
+    go :: Int -> Expr -> (Int, Expr, [Expr])
     go i expr = case expr of
-      Atom at -> (i, [Atom at])
-      Not ex -> (n, equiv : sub_ex)
+      Atom at -> (i, Atom at, [])
+      Not ex -> (j, var i, equiv : sub_ex)
         where
-          equiv = Equiv (var i) (Not $ var $ i+1)
-          (n, sub_ex) = go (i+1) ex
-      And ex1 ex2 -> (n, equiv : sub_ex1 ++ sub_ex2)
+          (j, ex', sub_ex) = go (i+1) ex
+          equiv = Equiv (var i) (Not ex')
+      And ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
         where
-          equiv = Equiv (var i) (var (i+1) `And` var (i+2))
-          (j, sub_ex1) = go (i+2) ex1
-          (n, sub_ex2) = go j ex2
-      Or ex1 ex2 -> (n, equiv : sub_ex1 ++ sub_ex2)
+          (j, ex1', sub_ex1) = go (i+1) ex1
+          (k, ex2', sub_ex2) = go j ex1
+          equiv = Equiv (var i) (And ex1' ex2')
+      Or ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
         where 
-          equiv = Equiv (var i) (var (i+1) `Or` var (i+2))
-          (j, sub_ex1) = go (i+2) ex1
-          (n, sub_ex2) = go j ex2
-      Impl ex1 ex2 -> (n, equiv : sub_ex1 ++ sub_ex2)
+          (j, ex1', sub_ex1) = go (i+1) ex1
+          (k, ex2', sub_ex2) = go j ex2
+          equiv = Equiv (var i) (Or ex1' ex2')
+      Impl ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
         where
-          equiv = Equiv (var i) (var (i+1) `Impl` var (i+2))
-          (j, sub_ex1) = go (i+2) ex1
-          (n, sub_ex2) = go j ex2
-      Equiv ex1 ex2 -> (n, equiv : sub_ex1 ++ sub_ex2)
+          (j, ex1', sub_ex1) = go (i+1) ex1
+          (k, ex2', sub_ex2) = go j ex2
+          equiv = Equiv (var i) (Impl ex1' ex2')
+      Equiv ex1 ex2 -> (k, var i, equiv : sub_ex1 ++ sub_ex2)
         where
-          equiv = Equiv (var i) (var (i+1) `Equiv` var (i+2))
-          (j, sub_ex1) = go (i+2) ex1
-          (n, sub_ex2) = go j ex2
+          (j, ex1', sub_ex1) = go (i+1) ex1
+          (k, ex2', sub_ex2) = go j ex2
+          equiv = Equiv (var i) (Equiv ex1' ex2')
 
 conjunctiveNormalForm :: Expr -> CNF
 conjunctiveNormalForm = 
@@ -90,6 +97,8 @@ conjunctiveNormalForm =
     distr (And e1 e2)         = And (distr e1) (distr e2)
     distr e                   = e
 
+    clause_set (Atom T)    = S.empty
+    clause_set (Atom F)    = S.singleton S.empty
     clause_set (And e1 e2) = S.union (clause_set e1) (clause_set e2)
     clause_set e           = S.singleton (clause e)
 
@@ -98,7 +107,7 @@ conjunctiveNormalForm =
 
     literal (Atom (V var)) = Pos var
     literal (Not (Atom (V var))) = Neg var
-    literal _ = undefined
+    literal e = error $ "expression " <> show e <> " is not a literal"
 
 -- Removes all boolean constants (0/1) unless the expression is 
 -- a tautology/unsatisfiable then the output expression might 

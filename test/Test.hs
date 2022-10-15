@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Test.Tasty
@@ -9,6 +10,7 @@ import Data.String (fromString)
 import Expr 
 import CNF
 import qualified LinearResolution as LR
+import Debug.Trace (trace)
 
 main = defaultMain tests
 
@@ -19,16 +21,13 @@ tests = testGroup "All tests"
 -- Property Based Tests
 
 propertyBasedTests :: TestTree
-propertyBasedTests = -- localOption (QuickCheckReplay (Just 12345)) $
+propertyBasedTests =
   testGroup "Property tests"
     [ testProperty "Expression parsing is inverse of showing" prop_ExprParseIsInverseOfShow 
     , testProperty "`removeConstants` drops all boolean constants from an expression" prop_RemovesAllBooleanConstants
-
-    -- TODO: test that various expression transformations produce equivalent formulas or at least _satisfiability equivalent_ formulas.
-
+    -- , testProperty "Tseytin transformation preserves satisfiability" prop_TseytinPreservesSatisfiability
     -- , testProperty "Found assignment satisfies formula" prop_FoundAssignmentSatisfiesFormula 
     ]
-
 
 instance Arbitrary Atom where
   arbitrary = frequency [ (4, var), (1, pure T), (1, pure F) ]
@@ -60,7 +59,7 @@ instance Arbitrary Expr where
 -- prop_FoundAssignmentSatisfiesFormula :: Expr -> Bool
 -- prop_FoundAssignmentSatisfiesFormula expr = 
 --   case sat expr of 
---     Just assignment -> eval assignment expr
+--     Just assignment -> assignment |= expr
 --     Nothing         -> True
 
 prop_ExprParseIsInverseOfShow :: Expr -> Bool
@@ -82,6 +81,11 @@ prop_RemovesAllBooleanConstants expr = is_trivial expr' || not (contains_constan
 
     contains_constant :: Expr -> Bool
     contains_constant = any is_constant . atoms
+
+-- TODO: linear resolution implementation is too slow for this test
+-- prop_TseytinPreservesSatisfiability :: Expr -> Bool
+-- prop_TseytinPreservesSatisfiability expr =
+--   LR.sat expr == LR.sat (tseytin $ trace (show expr) $ expr) 
 
 -- Unit Tests
 

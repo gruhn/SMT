@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
-module Expr (Atom(..), Expr(..), atoms) where
+{-# LANGUAGE FlexibleInstances #-}
+module Expr (Atom(..), Expr(..), atoms, rename) where
 
 import Control.Applicative (many, some)
 import qualified Text.Megaparsec.Char.Lexer as P
@@ -9,14 +9,10 @@ import Control.Applicative.Combinators ((<|>))
 import qualified Text.Megaparsec as P
 import qualified Text.Megaparsec.Char as P
 import Data.Void (Void)
+import qualified Data.Set as S
 
 data Atom = T | F | V String
   deriving (Eq, Ord)
-
-instance Show Atom where
-  show T = "1"
-  show F = "0"
-  show (V name) = name
 
 data Expr =
     Atom Atom
@@ -27,29 +23,6 @@ data Expr =
   | Equiv Expr Expr
   deriving Eq
 
-instance Show Expr where
-  show expr = case expr of
-    Atom atom   -> show atom
-    Not e       -> "-" <> parens expr e
-    And e1 e2   -> parens expr e1 <> " & "   <> parens expr e2
-    Or e1 e2    -> parens expr e1 <> " | "   <> parens expr e2
-    Impl e1 e2  -> parens expr e1 <> " -> "  <> parens expr e2
-    Equiv e1 e2 -> parens expr e1 <> " <-> " <> parens expr e2
-    where
-      precendence op = case op of 
-        Atom _ -> 3; Not _ -> 3;
-        And  _ _ -> 2; Or _ _ -> 2;
-        Impl _ _ -> 1; Equiv _ _ -> 0
-
-      -- TODO: avoid unnecessary parenthesis when precedences is implied by
-      -- operator associativity.
-      parens :: Expr -> Expr -> String
-      parens parent_expr child_expr =
-        if precendence child_expr <= precendence parent_expr then
-          "(" <> show child_expr <> ")"
-        else 
-          show child_expr
-
 atoms :: Expr -> [Atom]
 atoms expr = case expr of
   Atom at -> [at]
@@ -59,25 +32,38 @@ atoms expr = case expr of
   Impl ex ex' -> atoms ex <> atoms ex'
   Equiv ex ex' -> atoms ex <> atoms ex'
 
-eval :: (String -> Bool) -> Expr -> Bool
-eval interpret = go
-  where
-    go :: Expr -> Bool
-    go formula = case formula of
-      Atom (V var)  -> interpret var
-      Atom T        -> True
-      Atom F        -> False
-      Not p         -> not (go p)
-      p1 `And` p2   -> go p1 && go p2
-      p1 `Or` p2    -> go p1 || go p2
-      p1 `Impl` p2  -> go p1 <= go p2
-      p1 `Equiv` p2 -> go p1 == go p2
+rename :: (String -> String) -> Expr -> Expr
+rename f expr = case expr of
+  Atom (V name) -> Atom (V $ f name)
+  Atom at -> Atom at
+  Not ex  -> Not (rename f ex)
+  And ex ex' -> And (rename f ex) (rename f ex')
+  Or ex ex' -> Or (rename f ex) (rename f ex')
+  Impl ex ex' -> Impl (rename f ex) (rename f ex')
+  Equiv ex ex' -> Equiv (rename f ex) (rename f ex')
 
-instance IsString Expr where
-  fromString str = 
-    case P.parse (parser <* P.eof) "" str of
-      Left  err  -> error (P.errorBundlePretty err) 
-      Right expr -> expr
+class Model a where
+  (|=) :: a -> Expr -> Bool
+
+instance Model (String -> Bool) where
+  assignment |= expr = go expr
+    where
+      go :: Expr -> Bool
+      go formula = case formula of
+        Atom (V var)  -> assignment var
+        Atom T        -> True
+        Atom F        -> False
+        Not p         -> not (go p)
+        p1 `And` p2   -> go p1 && go p2
+        p1 `Or` p2    -> go p1 || go p2
+        p1 `Impl` p2  -> go p1 <= go p2
+        p1 `Equiv` p2 -> go p1 == go p2
+
+instance Model (S.Set String) where
+  true_vars |= expr = (`S.member` true_vars) |= expr
+
+
+-- Expression Parsing and Pretty-Printing
 
 type Parser = P.Parsec Void String
 
@@ -118,3 +104,37 @@ parser = expr
 
     expr :: Parser Expr
     expr = makeExprParser (atom <|> parens expr) operatorTable
+
+instance IsString Expr where
+  fromString str = 
+    case P.parse (parser <* P.eof) "" str of
+      Left  err  -> error (P.errorBundlePretty err) 
+      Right expr -> expr
+
+instance Show Atom where
+  show T = "1"
+  show F = "0"
+  show (V name) = name
+
+instance Show Expr where
+  show expr = case expr of
+    Atom atom   -> show atom
+    Not e       -> "-" <> parens expr e
+    And e1 e2   -> parens expr e1 <> " & "   <> parens expr e2
+    Or e1 e2    -> parens expr e1 <> " | "   <> parens expr e2
+    Impl e1 e2  -> parens expr e1 <> " -> "  <> parens expr e2
+    Equiv e1 e2 -> parens expr e1 <> " <-> " <> parens expr e2
+    where
+      precendence op = case op of 
+        Atom _ -> 3; Not _ -> 3;
+        And  _ _ -> 2; Or _ _ -> 2;
+        Impl _ _ -> 1; Equiv _ _ -> 0
+
+      -- TODO: avoid unnecessary parenthesis when precedences is implied by
+      -- operator associativity.
+      parens :: Expr -> Expr -> String
+      parens parent_expr child_expr =
+        if precendence child_expr <= precendence parent_expr then
+          "(" <> show child_expr <> ")"
+        else 
+          show child_expr
