@@ -7,11 +7,12 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import Data.String (fromString)
 
-import Expr
+import Expression
 import CNF
 import qualified LinearResolution as LR
 import Debug.Trace (trace)
 import qualified DPLL
+import qualified ConflictDrivenClauseLearning as CDCL
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe, isJust)
 import Assignment ((|=))
@@ -102,7 +103,7 @@ prop_identity_or_negation_satisfiable :: Expr -> Bool
 prop_identity_or_negation_satisfiable expr =
   let identity = toCNF expr
       negation = toCNF (Not expr)
-  in  isJust (DPLL.sat identity <|> DPLL.sat negation)
+  in  isJust (CDCL.sat identity <|> CDCL.sat negation)
 
 -- Unit Tests
 
@@ -141,5 +142,13 @@ unitTests = testGroup "Unit Tests"
     , testCase "expr4 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr4) @?= False
     , testCase "expr5 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr5) @?= False
     , testCase "expr6 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr6) @?= False
+    ]
+  , testGroup "Conflict Driven Clause Learning"
+    [ testCase "expr1 is satisfiable"   $ isJust (CDCL.sat $ toCNF expr1) @?= True
+    , testCase "expr2 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr2) @?= False
+    , testCase "expr3 is satisfiable"   $ isJust (CDCL.sat $ toCNF expr3) @?= True
+    , testCase "expr4 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr4) @?= False
+    , testCase "expr5 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr5) @?= False
+    , testCase "expr6 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr6) @?= False
     ]
   ]

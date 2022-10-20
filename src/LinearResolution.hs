@@ -1,7 +1,7 @@
 module LinearResolution (sat) where
 
 import CNF (conjunctiveNormalForm, CNF, Literal (..), Clause, complement)
-import Expr (Expr)
+import Expression (Expr)
 import qualified Data.Set as S
 import Data.Foldable (toList)
 import Control.Monad (guard)

@@ -1,6 +1,6 @@
 module Assignment (Assignment, fromLiteralList, (|=)) where
 
-import Expr (Expr (..), Atom (..))
+import Expression (Expr (..), Atom (..))
 import CNF (Literal (..))
 import qualified Data.Map as M
 import Data.Foldable (toList)

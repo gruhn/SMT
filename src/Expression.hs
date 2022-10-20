@@ -1,4 +1,4 @@
-module Expr (Atom(..), Expr(..), atoms, rename) where
+module Expression (Atom(..), Expr(..), atoms, rename) where
 
 import Control.Applicative (many, some)
 import qualified Text.Megaparsec.Char.Lexer as P

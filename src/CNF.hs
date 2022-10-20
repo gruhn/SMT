@@ -1,6 +1,6 @@
 module CNF where
 
-import Expr (Atom (..), Expr (..), rename)
+import Expression (Atom (..), Expr (..), rename)
 import qualified Data.Set as S
 import Utils (fixpoint)
 

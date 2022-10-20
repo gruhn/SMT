@@ -6,10 +6,10 @@ maintainer:         niklas@gruhn.me
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  CDCL
+    exposed-modules:  ConflictDrivenClauseLearning
                     , DPLL
                     , LinearResolution
-                    , Expr
+                    , Expression
                     , CNF
                     , Assignment
     other-modules:    Utils

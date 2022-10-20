@@ -1,6 +1,6 @@
-module DPLL (sat) where
+module DPLL (sat, convergeUnitPropagation) where
 
-import Expr (Expr)
+import Expression (Expr)
 import CNF (conjunctiveNormalForm, CNF, Literal (..), complement, Clause, variables, variableName)
 import qualified Data.Set as S
 import Data.Foldable (toList, find)
