@@ -45,9 +45,11 @@ negationNormalForm = go_id
       e1 `Or` e2    -> go_not e1 `And`    go_not e2
       impl_or_equiv -> go_not (desugar impl_or_equiv)
 
--- The Tseytin transformation turns a formula into an equivalent
--- formula that in turn can be transformed into CNF in linear space
--- at the cost of adding new variables.
+-- Transforming a formula into CNF might take exponential time and space.
+-- However, the Tseytin encoding of a formula can be turned into CNF in
+-- linear time and space (nested equivalences still blow up though) at the 
+-- cost of introducing additional variables. Any satisfiing assignment to
+-- the Tseytin encoding also satifies the original formula.
 tseytin :: Expr -> Expr
 tseytin = foldr And (var 1) . snd . go 1 . rename escape
   where

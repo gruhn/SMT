@@ -12,8 +12,8 @@ import Data.Function (on)
 import Data.List (sortBy)
 import qualified Control.Monad.State.Lazy as State
 
-sat :: Expr -> Bool
-sat = linearResolution . conjunctiveNormalForm
+sat :: CNF -> Bool
+sat = linearResolution
 
 linearResolution :: CNF -> Bool
 linearResolution = not . any (S.empty `elem`) . searchTree

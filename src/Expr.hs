@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
 module Expr (Atom(..), Expr(..), atoms, rename) where
 
 import Control.Applicative (many, some)
@@ -41,26 +40,6 @@ rename f expr = case expr of
   Or ex ex' -> Or (rename f ex) (rename f ex')
   Impl ex ex' -> Impl (rename f ex) (rename f ex')
   Equiv ex ex' -> Equiv (rename f ex) (rename f ex')
-
-class Model a where
-  (|=) :: a -> Expr -> Bool
-
-instance Model (String -> Bool) where
-  assignment |= expr = go expr
-    where
-      go :: Expr -> Bool
-      go formula = case formula of
-        Atom (V var)  -> assignment var
-        Atom T        -> True
-        Atom F        -> False
-        Not p         -> not (go p)
-        p1 `And` p2   -> go p1 && go p2
-        p1 `Or` p2    -> go p1 || go p2
-        p1 `Impl` p2  -> go p1 <= go p2
-        p1 `Equiv` p2 -> go p1 == go p2
-
-instance Model (S.Set String) where
-  true_vars |= expr = (`S.member` true_vars) |= expr
 
 
 -- Expression Parsing and Pretty-Printing

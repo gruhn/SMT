@@ -7,11 +7,15 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import Data.String (fromString)
 
-import Expr 
+import Expr
 import CNF
 import qualified LinearResolution as LR
 import Debug.Trace (trace)
 import qualified DPLL
+import qualified Data.Set as S
+import Data.Maybe (fromMaybe, isJust)
+import Assignment ((|=))
+import Control.Applicative ((<|>))
 
 main = defaultMain tests
 
@@ -24,22 +28,21 @@ tests = testGroup "All tests"
 propertyBasedTests :: TestTree
 propertyBasedTests =
   testGroup "Property tests"
-    [ testProperty "Expression parsing is inverse of showing" prop_expr_parse_is_inverse_of_show 
+    [ testProperty "Expression parsing is inverse of showing" prop_expr_parse_is_inverse_of_show
     , testProperty "`removeConstants` drops all boolean constants from an expression" prop_removes_all_boolean_constants
-    , testProperty "A formula itself or its negation is satisfiable" prop_itself_or_negation_is_satisfiable
-
-    -- TODO: tests too slow:
-    -- , testProperty "Tseytin transformation preserves satisfiability" prop_tseytin_preserves_satisfiability
-    -- , testProperty "Linear resolution and DPLL are equivalent" prop_linear_resolution_and_dpll_are_equivalent
-
-    -- , testProperty "Found assignment satisfies formula" prop_found_assigment_satisfies_formula 
+    , testProperty "A formula or its negation is always satisfiable" prop_identity_or_negation_satisfiable
+    , testProperty "Tseytin transformation preserves satisfiability" prop_tseytin_preserves_satisfiability
+    , testProperty "Found assignment satisfies formula" prop_found_assigment_satisfies_formula
+    -- TODO
+    -- negation of unsatifiable formula is tautology
+    -- DPLL and CDCL are equivalent
     ]
 
 instance Arbitrary Atom where
   arbitrary = frequency [ (4, var), (1, pure T), (1, pure F) ]
     where
       var :: Gen Atom
-      var = do 
+      var = do
         -- FIXME: magic number
         i <- chooseInt (0, 10)
         return $ V ('x' : show i)
@@ -48,12 +51,12 @@ instance Arbitrary Expr where
   arbitrary = sized arbitrary_sized_expr
     where
       arbitrary_sized_expr :: Int -> Gen Expr
-      arbitrary_sized_expr 0 = Atom <$> arbitrary 
+      arbitrary_sized_expr 0 = Atom <$> arbitrary
       arbitrary_sized_expr n = do
         op <- elements [And, Or, Impl, Equiv]
         op <$> arbitrary_sized_expr (n `div` 2) <*> arbitrary_sized_expr (n `div` 2)
 
-  shrink expr = 
+  shrink expr =
     case expr of
       Atom atom     -> []
       Not e         -> e : shrink e
@@ -62,14 +65,8 @@ instance Arbitrary Expr where
       e1 `Impl` e2  -> [e1, e2] ++ [ e1' `Impl`  e2' | (e1', e2') <- shrink (e1, e2) ]
       e1 `Equiv` e2 -> [e1, e2] ++ [ e1' `Equiv` e2' | (e1', e2') <- shrink (e1, e2) ]
 
--- prop_found_assigment_satisfies_formula :: Expr -> Bool
--- prop_found_assigment_satisfies_formula expr = 
---   case sat expr of 
---     Just assignment -> assignment |= expr
---     Nothing         -> True
-
 prop_expr_parse_is_inverse_of_show :: Expr -> Bool
-prop_expr_parse_is_inverse_of_show expr = 
+prop_expr_parse_is_inverse_of_show expr =
   (fromString . show $ expr) == expr
 
 prop_removes_all_boolean_constants :: Expr -> Bool
@@ -82,23 +79,30 @@ prop_removes_all_boolean_constants expr = is_trivial expr' || not (contains_cons
     is_constant _ = True
 
     is_trivial :: Expr -> Bool
-    is_trivial  (Atom at) = is_constant at
+    is_trivial (Atom at) = is_constant at
     is_trivial _ = False
 
     contains_constant :: Expr -> Bool
     contains_constant = any is_constant . atoms
 
+toCNF :: Expr -> CNF
+toCNF = conjunctiveNormalForm . tseytin
+
+prop_found_assigment_satisfies_formula :: Expr -> Bool
+prop_found_assigment_satisfies_formula expr = fromMaybe True $ do
+  model <- DPLL.sat (conjunctiveNormalForm $ tseytin expr)
+  return $ model |= tseytin expr
+
 prop_tseytin_preserves_satisfiability :: Expr -> Bool
-prop_tseytin_preserves_satisfiability expr =
-  DPLL.sat expr == DPLL.sat (tseytin expr) 
+prop_tseytin_preserves_satisfiability expr = fromMaybe True $ do
+  model <- DPLL.sat (conjunctiveNormalForm $ tseytin expr)
+  return $ model |= expr
 
-prop_linear_resolution_and_dpll_are_equivalent :: Expr -> Bool
-prop_linear_resolution_and_dpll_are_equivalent expr =
-  DPLL.sat (tseytin expr) == LR.sat (tseytin expr)
-
-prop_itself_or_negation_is_satisfiable :: Expr -> Bool
-prop_itself_or_negation_is_satisfiable expr =
-  DPLL.sat (tseytin expr) || DPLL.sat (tseytin $ Not expr)
+prop_identity_or_negation_satisfiable :: Expr -> Bool
+prop_identity_or_negation_satisfiable expr =
+  let identity = toCNF expr
+      negation = toCNF (Not expr)
+  in  isJust (DPLL.sat identity <|> DPLL.sat negation)
 
 -- Unit Tests
 
@@ -122,20 +126,20 @@ expr6 = "(-((b -> b) | (-a)))"
 
 unitTests :: TestTree
 unitTests = testGroup "Unit Tests"
-  [ testGroup "Linear Resolution" 
-    [ testCase "expr1 is satisfiable"   $ LR.sat expr1 @?= True
-    , testCase "expr2 is unsatisfiable" $ LR.sat expr2 @?= False 
-    , testCase "expr3 is satisfiable"   $ LR.sat expr3 @?= True
-    , testCase "expr4 is unsatisfiable" $ LR.sat expr4 @?= False 
-    , testCase "expr5 is unsatisfiable" $ LR.sat expr5 @?= False 
-    , testCase "expr6 is unsatisfiable" $ LR.sat expr6 @?= False 
+  [ testGroup "Linear Resolution"
+    [ testCase "expr1 is satisfiable"   $ LR.sat (conjunctiveNormalForm expr1) @?= True
+    , testCase "expr2 is unsatisfiable" $ LR.sat (conjunctiveNormalForm expr2) @?= False
+    , testCase "expr3 is satisfiable"   $ LR.sat (conjunctiveNormalForm expr3) @?= True
+    , testCase "expr4 is unsatisfiable" $ LR.sat (conjunctiveNormalForm expr4) @?= False
+    , testCase "expr5 is unsatisfiable" $ LR.sat (conjunctiveNormalForm expr5) @?= False
+    , testCase "expr6 is unsatisfiable" $ LR.sat (conjunctiveNormalForm expr6) @?= False
     ]
   , testGroup "DPLL"
-    [ testCase "expr1 is satisfiable"   $ DPLL.sat expr1 @?= True
-    , testCase "expr2 is unsatisfiable" $ DPLL.sat expr2 @?= False 
-    , testCase "expr3 is satisfiable"   $ DPLL.sat expr3 @?= True
-    , testCase "expr4 is unsatisfiable" $ DPLL.sat expr4 @?= False 
-    , testCase "expr5 is unsatisfiable" $ DPLL.sat expr5 @?= False 
-    , testCase "expr6 is unsatisfiable" $ DPLL.sat expr6 @?= False 
+    [ testCase "expr1 is satisfiable"   $ isJust (DPLL.sat $ toCNF expr1) @?= True
+    , testCase "expr2 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr2) @?= False
+    , testCase "expr3 is satisfiable"   $ isJust (DPLL.sat $ toCNF expr3) @?= True
+    , testCase "expr4 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr4) @?= False
+    , testCase "expr5 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr5) @?= False
+    , testCase "expr6 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr6) @?= False
     ]
   ]
