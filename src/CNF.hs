@@ -3,6 +3,8 @@ module CNF where
 import Expression (Atom (..), Expr (..), rename)
 import qualified Data.Set as S
 import Utils (fixpoint)
+import Data.Foldable (toList)
+import qualified Data.Map as M
 
 data Literal = Pos String | Neg String
   deriving (Eq, Ord, Show)
@@ -93,7 +95,7 @@ tseytin = foldr And (var 1) . snd . go 1 . rename escape
           (k, sub_ex2) = go (j+1) ex2
 
 conjunctiveNormalForm :: Expr -> CNF
-conjunctiveNormalForm = 
+conjunctiveNormalForm =
   clause_set . fixpoint distr . removeConstants . negationNormalForm
   where
     -- Apply distributive property to drag `And` constructors 
@@ -162,3 +164,25 @@ removeConstants = fixpoint go
 
 variables :: CNF -> S.Set String
 variables = foldMap (S.map variableName)
+
+-- Convert CNF formula to String in DIMACS format. See:
+-- https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html#dimacs-cnf
+showDIMACS :: CNF -> String
+showDIMACS cnf = unlines (header_line : clause_lines)
+  where
+    vars_indexed = M.fromList (zip vars indices)
+      where
+        vars = toList $ variables cnf
+        indices = show <$> [1 ..]
+
+    clause_count = length cnf
+    var_count    = length vars_indexed
+
+    header_line = "p cnf " <> show var_count <> " " <> show clause_count
+
+    show_var (Pos name) = vars_indexed M.! name
+    show_var (Neg name) = "-" <> vars_indexed M.! name
+
+    show_clause clause = unwords (show_var <$> toList clause)
+
+    clause_lines = (<> " 0") . show_clause <$> toList cnf

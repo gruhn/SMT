@@ -1,0 +1,7 @@
+version: "3"
+
+services:
+  minisat: 
+    build: .
+    volumes:
+      - ./dimacs:/minisat/dimacs

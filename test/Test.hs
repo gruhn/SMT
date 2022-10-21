@@ -125,6 +125,26 @@ expr5 = "(-((a -> a) | (a | b)))"
 expr6 :: Expr
 expr6 = "(-((b -> b) | (-a)))"
 
+-- Expression describing the (unsatisfiable) pigeon hole principle for n holes and n+1 pigeons.
+-- This expression is considered performance "worst case" for SAT solvers.
+pigeonHolePrinciple :: Int -> Expr
+pigeonHolePrinciple n = at_most_one_pigeon_per_hole `And` at_least_one_hole_per_pigeon
+  where
+    var p h = Atom $ V $ "x" <> show p <> "x" <> show h
+
+    at_most_one_pigeon_per_hole = foldr1 And $ do
+      hole    <- [1 .. n]
+      pigeon1 <- [1 .. n]
+      pigeon2 <- [pigeon1+1 .. n+1]
+      return $ Not (var pigeon1 hole) 
+          `Or` Not (var pigeon2 hole)
+
+    pigeon_in_one_of pigeon = foldr1 Or $ 
+      var pigeon <$> [1 .. n]
+
+    at_least_one_hole_per_pigeon = foldr1 And $ 
+      pigeon_in_one_of <$> [1 .. n+1]
+
 unitTests :: TestTree
 unitTests = testGroup "Unit Tests"
   [ testGroup "Linear Resolution"
