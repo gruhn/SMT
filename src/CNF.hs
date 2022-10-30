@@ -1,36 +1,37 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module CNF where
 
-import Expression (Atom (..), Expr (..), rename)
+import Expression (Atom (..), Expr (..))
 import qualified Data.Set as S
 import Utils (fixpoint)
 import Data.Foldable (toList)
 import qualified Data.Map as M
 
-data Literal = Pos String | Neg String
+data Literal a = Pos a | Neg a
   deriving (Eq, Ord, Show)
 
-type Clause = S.Set Literal
+type Clause a = S.Set (Literal a)
 
-type CNF = S.Set Clause
+type CNF a = S.Set (Clause a)
 
-variableName :: Literal -> String
+variableName :: Literal a -> a
 variableName (Pos name) = name
 variableName (Neg name) = name
 
-complement :: Literal -> Literal
+complement :: Literal a -> Literal a
 complement (Pos name) = Neg name
 complement (Neg name) = Pos name
 
 -- substitute syntax sugar, i.e. implication and equivalence operators, with and/or/not
-desugar :: Expr -> Expr
+desugar :: Expr a -> Expr a
 desugar (e1 `Impl` e2)  = Not e1 `Or` e2
 desugar (e1 `Equiv` e2) = desugar (e1 `Impl` e2) `And` desugar (e2 `Impl` e1)
 desugar e = e
 
-negationNormalForm :: Expr -> Expr
+negationNormalForm :: Expr a -> Expr a
 negationNormalForm = go_id
   where
-    go_id :: Expr -> Expr
+    go_id :: Expr a -> Expr a
     go_id expr = case expr of
       Not e         -> go_not e
       Atom e        -> Atom e
@@ -38,7 +39,7 @@ negationNormalForm = go_id
       e1 `Or` e2    -> go_id e1 `Or`    go_id e2
       impl_or_equiv -> go_id (desugar impl_or_equiv)
 
-    go_not :: Expr -> Expr
+    go_not :: Expr a -> Expr a
     go_not expr = case expr of
       Not e         -> go_id e
       Atom e        -> Not (Atom e)
@@ -52,8 +53,8 @@ negationNormalForm = go_id
 -- linear time and space (nested equivalences still blow up though) at the 
 -- cost of introducing additional variables. Any satisfiing assignment to
 -- the Tseytin encoding also satifies the original formula.
-tseytin :: Expr -> Expr
-tseytin = foldr And (var 1) . snd . go 1 . rename escape
+tseytin :: Expr String -> Expr String
+tseytin = foldr And (var 1) . snd . go 1 . fmap escape
   where
     var i = Atom $ V $ 'h' : show i
 
@@ -62,7 +63,7 @@ tseytin = foldr And (var 1) . snd . go 1 . rename escape
     escape ('h':rest) = "hh" <> rest
     escape var = var
 
-    go :: Int -> Expr -> (Int, [Expr])
+    go :: Int -> Expr String -> (Int, [Expr String])
     go i expr = case expr of
       Atom at -> (i, [Atom at])
       Not (Atom at) -> (i, [var i `Equiv` Not (Atom at)])
@@ -75,7 +76,7 @@ tseytin = foldr And (var 1) . snd . go 1 . rename escape
       Impl ex1 ex2  -> go_binary i Impl ex1 ex2
       Equiv ex1 ex2 -> go_binary i Equiv ex1 ex2
 
-    go_binary :: Int -> (Expr -> Expr -> Expr) -> Expr -> Expr -> (Int, [Expr])
+    go_binary :: Int -> (Expr String -> Expr String -> Expr String) -> Expr String -> Expr String-> (Int, [Expr String])
     go_binary i op ex_l ex_r = case (ex_l, ex_r) of
       (Atom at1, Atom at2) -> (i, [eq])
         where
@@ -94,38 +95,41 @@ tseytin = foldr And (var 1) . snd . go 1 . rename escape
           (j, sub_ex1) = go (i+1) ex1
           (k, sub_ex2) = go (j+1) ex2
 
-conjunctiveNormalForm :: Expr -> CNF
+conjunctiveNormalForm :: forall a. (Show a, Ord a, Eq a) => Expr a -> CNF a
 conjunctiveNormalForm =
   clause_set . fixpoint distr . removeConstants . negationNormalForm
   where
     -- Apply distributive property to drag `And` constructors 
     -- outward and push `Or` constructors inward. 
-    distr :: Expr -> Expr
+    distr :: Expr a -> Expr a
     distr (Or e1 (And e2 e3)) = And (distr $ Or e1 e2) (distr $ Or e1 e3)
     distr (Or (And e1 e2) e3) = And (distr $ Or e1 e3) (distr $ Or e2 e3)
     distr (Or e1 e2)          = Or  (distr e1) (distr e2)
     distr (And e1 e2)         = And (distr e1) (distr e2)
     distr e                   = e
 
+    clause_set :: Expr a -> CNF a
     clause_set (Atom T)    = S.empty
     clause_set (Atom F)    = S.singleton S.empty
     clause_set (And e1 e2) = S.union (clause_set e1) (clause_set e2)
     clause_set e           = S.singleton (clause e)
 
+    clause :: Expr a -> Clause a
     clause (Or e1 e2) = S.union (clause e1) (clause e2)
     clause e          = S.singleton (literal e)
 
+    literal :: Expr a -> Literal a
     literal (Atom (V var)) = Pos var
     literal (Not (Atom (V var))) = Neg var
-    literal e = error $ "expression " <> show e <> " is not a literal"
+    literal e = error "expression is not a literal"
 
 -- Removes all boolean constants (0/1) unless the expression is 
 -- a tautology/unsatisfiable then the output expression might 
 -- reduce to just `Atom T` or `Atom F`.
-removeConstants :: Expr -> Expr
+removeConstants :: Eq a => Expr a -> Expr a
 removeConstants = fixpoint go
   where
-    go :: Expr -> Expr
+    go :: Expr a -> Expr a
     go expr = case expr of
       Atom e -> Atom e
 
@@ -162,12 +166,12 @@ removeConstants = fixpoint go
         (_, Atom F) -> Not (go ex_l)
         _ -> Equiv (go ex_l) (go ex_r)
 
-variables :: CNF -> S.Set String
+variables :: Ord a => CNF a -> S.Set a
 variables = foldMap (S.map variableName)
 
 -- Convert CNF formula to String in DIMACS format. See:
 -- https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html#dimacs-cnf
-showDIMACS :: CNF -> String
+showDIMACS :: Ord a => CNF a -> String
 showDIMACS cnf = unlines (header_line : clause_lines)
   where
     vars_indexed = M.fromList (zip vars indices)

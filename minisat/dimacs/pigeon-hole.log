@@ -192,12 +192,6 @@ CPU time              : 69.3233 s
 UNSATISFIABLE
 ☁  minisat [master] ⚡ docker-compose run minisat minisat dimacs/pigeon-hole-11.cnf
 WARNING: for repeatability, setting FPU to use double precision
-ERROR! Could not open file: dimacs/pigeon-hole-11.cnf
-☁  minisat [master] ⚡ docker-compose run minisat minisat dimacs/pigeon-hole-11.cnf
-WARNING: for repeatability, setting FPU to use double precision
-ERROR! Could not open file: dimacs/pigeon-hole-11.cnf
-☁  minisat [master] ⚡ docker-compose run minisat minisat dimacs/pigeon-hole-11.cnf
-WARNING: for repeatability, setting FPU to use double precision
 ============================[ Problem Statistics ]=============================
 |                                                                             |
 |  Number of variables:           132                                         |
