@@ -10,6 +10,10 @@ import qualified Data.Map as M
 data Literal a = Pos a | Neg a
   deriving (Eq, Ord, Show)
 
+instance Functor Literal where
+  fmap f (Pos a) = Pos (f a)
+  fmap f (Neg a) = Neg (f a)
+
 type Clause a = S.Set (Literal a)
 
 type CNF a = S.Set (Clause a)

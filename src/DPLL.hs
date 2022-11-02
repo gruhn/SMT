@@ -70,8 +70,8 @@ dpll cnf_0 = ((unit_literals <> pure_literals) <>) <$> maybe_rest_literals
 
     split_and_recur :: Ord a => CNF a -> Maybe [Literal a]
     split_and_recur cnf
-      | null cnf     = Just []      -- derived empty clause set => formula is satisfiable
-      | any null cnf = Nothing      -- derived empty clause     => formula is unsatifiable
+      | null cnf     = Just []      -- derived empty clause set => SAT
+      | any null cnf = Nothing      -- derived empty clause     => UNSAT
       | otherwise    = dpll cnf_left <|> dpll cnf_right
       where
         split_literal = pick_literal cnf
