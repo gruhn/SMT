@@ -38,7 +38,8 @@ type Assignment = M.IntMap Maplet
 
 type AlgState = (Formula, Assignment)
 
-newtype AlgMonad x = AlgMonad { runMonad :: forall r. AlgState -> (AlgState -> x -> r) -> (Formula -> r) -> r }
+newtype AlgMonad x = AlgMonad 
+  { runMonad :: forall r. AlgState -> (AlgState -> x -> r) -> (Formula -> r) -> r }
 
 instance Monad AlgMonad where
     return x = AlgMonad $ \(!s) k kf -> k s x
@@ -137,23 +138,29 @@ algorithmAction :: AlgMonad [Lit]
 algorithmAction = go where
     go = get >>= mainCond
 
+    mainCond :: AlgState -> AlgMonad [Lit]
     mainCond s
         | satisfied s = gets (choices . snd)
         | unsatisfied s = learnAndFail
         | hasUnit s = unitProp
         | otherwise = tryLiteral
 
+    unitProp :: AlgMonad [Lit]
     unitProp = do modify' unitPropagation ; go
 
+    learnAndFail :: AlgMonad b
     learnAndFail = do
         cs <- gets learnedClauses
         forM_ cs $ \c -> unless (null c) $ modify $ addClause c
         mzero
 
+    tryLiteral :: AlgMonad [Lit]
     tryLiteral = gets chooseLit >>= exhaust
 
+    choose :: Lit -> AlgMonad [Lit]
     choose lit = do modify' $ second (addMaplet lit Nothing) ; go
 
+    exhaust :: Lit -> AlgMonad [Lit]
     exhaust lit = choose lit `mplus` ifM (gets $ not . unsatisfied) (choose (-lit)) mzero
 
 findSat :: Formula -> Maybe [Lit]

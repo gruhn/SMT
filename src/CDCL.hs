@@ -25,42 +25,52 @@ insertClauseMap clause clause_map =
 clauseMap :: Ord a => CNF a -> ClauseMap a
 clauseMap = foldr insertClauseMap M.empty
 
-type State' a = State (CNF a, ClauseMap a)
+data StateData a = SD 
+  { getFormula :: CNF a 
+  , getClauseMap :: ClauseMap a 
+  }
+
+type State' a = State (StateData a)
 
 type Trail a = [(Clause a, Literal a)]
 
-unassignedLiterals :: State' a (S.Set (Literal a))
-unassignedLiterals = State.gets (M.keysSet . snd)
+unassignedLiterals :: StateData a -> S.Set (Literal a)
+unassignedLiterals = M.keysSet . getClauseMap
 
-clausesContaining :: Ord a => Literal a -> State' a (S.Set (Clause a))
-clausesContaining literal =
-  State.gets (M.findWithDefault S.empty literal . snd)
+clausesContaining :: Ord a => Literal a -> StateData a -> S.Set (Clause a)
+clausesContaining literal = M.findWithDefault S.empty literal . getClauseMap
 
 modifyClauseMap :: (ClauseMap a -> ClauseMap a) -> State' a ()
-modifyClauseMap f = State.modify (second f)
+modifyClauseMap f = do 
+  state <- State.get
+  let new_value = f $ getClauseMap state 
+  State.put $ state { getClauseMap = new_value }
 
-modifyCNF :: (CNF a -> CNF a) -> State' a ()
-modifyCNF f = State.modify (first f)
+modifyFormula :: (CNF a -> CNF a) -> State' a ()
+modifyFormula f = do
+  state <- State.get
+  let new_value = f $ getFormula state 
+  State.put $ state { getFormula = new_value }
 
 propagate :: Ord a => Literal a -> State' a (Either (Clause a) (Trail a))
 propagate literal = do
   -- `literal is assigned false, so its complement is assigned true.
   -- All clauses that contain the complement are automatically 
   -- satisfied and can noew be ignored.
-  satisfied_clauses <- clausesContaining (complement literal)
-  modifyCNF (S.\\ satisfied_clauses)
+  satisfied_clauses <- State.gets $ clausesContaining (complement literal)
+  modifyFormula (S.\\ satisfied_clauses)
 
   -- Since `literal` is assigned false, all clauses that contain it, 
   -- have now one less literal that can contribute to the clauses 
   -- satisfiability. Thus, these clauses are now potentially 
   -- unit or conflict clauses.
-  propagated_clauses <- clausesContaining literal
+  propagated_clauses <- State.gets $ clausesContaining literal
 
   -- The key set of `clause_map` reflects the unassigned literals. 
   -- Since `literal` (and its complement) are now assigned, we remove them.
   modifyClauseMap (M.delete literal . M.delete (complement literal))
 
-  unassigned <- unassignedLiterals
+  unassigned <- State.gets unassignedLiterals
 
   let implies antecedent = (antecedent, antecedent `S.intersection` unassigned)
 
@@ -108,9 +118,7 @@ learnClause conflict trail = find is_asserting $ scanl resolve conflict trail
     is_asserting clause =
       length (trail_vars `S.intersection` S.map variableName clause) == 1
 
-isSatisfied :: State' a Bool
-isSatisfied = null <$> unassignedLiterals
-
+{-
 decide :: Ord a => State' a (Maybe [Literal a])
 decide = do
   clause_map <- State.gets snd
@@ -141,8 +149,35 @@ decide = do
             Just conflict_clause -> do
               State.modify (second $ insertClauseMap conflict_clause)
               return Nothing
+-}
+
+isSatisfied :: StateData a -> Bool
+isSatisfied = null . unassignedLiterals
+
+step :: StateData a -> State' a (Maybe (S.Set (Literal a)))
+step state
+  | is_satisfied = _
+  | has_conflict state = _
+  | otherwise = try_literal
+  where
+    is_satisfied = null $ unassignedLiterals $ state
+
+    has_conflict = _
+
+    try_literal = do
+      -- TODO: pick smarter
+      let literal = S.findMin $ unassignedLiterals $ state
+      _
+
+-- getAssignment :: StateData a -> Assignment a
+-- getAssignment
 
 sat :: Ord a => CNF a -> Maybe (Assignment a)
-sat cnf = undefined
-  where
-    clause_map = clauseMap cnf
+sat formula = _
+-- sat cnf = _ do 
+--   let inital_state = SD cnf (clauseMap cnf)
+--   literal_set <- State.gets step
+
+--   State.evalState initial_state
+
+--   Assign.fromLiteralList $ toList $ State.evalState (State.gets step)
