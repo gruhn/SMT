@@ -9,17 +9,19 @@ import Test.Tasty.QuickCheck
 import Data.String (fromString)
 
 import Expression
-import CNF
-import qualified LinearResolution as LR
+import CNF 
+import qualified Algorithm.LinearResolution as LR
 import Debug.Trace (trace)
-import qualified DPLL
-import qualified CDCL2 as CDCL
+import qualified Algorithm.DPLL as DPLL
+import qualified Algorithm.CDCL2 as CDCL
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe, isJust)
-import Assignment ((|=))
+import Assignment ((|=), Assignment)
 import Control.Applicative ((<|>))
 import Control.Monad (guard)
 import qualified GameUnequal
+import qualified Data.Map as M
+import Assignment (ignoreAuxVars)
 
 main :: IO ()
 main = defaultMain tests
@@ -53,7 +55,7 @@ expr6 = "(-((b -> b) | (-a)))"
 pigeonHolePrinciple :: Int -> Expr String
 pigeonHolePrinciple n = at_most_one_pigeon_per_hole `And` at_least_one_hole_per_pigeon
   where
-    var p h = Atom $ V $ "x" <> show p <> "x" <> show h
+    var p h = Atom $ "x" <> show p <> "x" <> show h
 
     at_most_one_pigeon_per_hole = foldr1 And $ do
       hole    <- [1 .. n]
@@ -68,6 +70,15 @@ pigeonHolePrinciple n = at_most_one_pigeon_per_hole `And` at_least_one_hole_per_
     at_least_one_hole_per_pigeon = foldr1 And $
       pigeon_in_one_of <$> [1 .. n+1]
 
+satWith :: (CNF (WithAux String) -> Maybe (Assignment (WithAux String)))
+        -> Expr String
+        -> Maybe (Assignment String)
+satWith sat = 
+    fmap ignoreAuxVars
+  . sat 
+  . conjunctiveNormalForm 
+  . tseytin 
+
 unitTests :: TestTree
 unitTests = testGroup "Unit Tests"
   [ testGroup "Linear Resolution"
@@ -79,21 +90,21 @@ unitTests = testGroup "Unit Tests"
     , testCase "expr6 is unsatisfiable" $ LR.sat (conjunctiveNormalForm expr6) @?= False
     ]
   , testGroup "DPLL"
-    [ testCase "expr1 is satisfiable"   $ isJust (DPLL.sat $ toCNF expr1) @?= True
-    , testCase "expr2 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr2) @?= False
-    , testCase "expr3 is satisfiable"   $ isJust (DPLL.sat $ toCNF expr3) @?= True
-    , testCase "expr4 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr4) @?= False
-    , testCase "expr5 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr5) @?= False
-    , testCase "expr6 is unsatisfiable" $ isJust (DPLL.sat $ toCNF expr6) @?= False
+    [ testCase "expr1 is satisfiable"   $ isJust (satWith DPLL.sat expr1) @?= True
+    , testCase "expr2 is unsatisfiable" $ isJust (satWith DPLL.sat expr2) @?= False
+    , testCase "expr3 is satisfiable"   $ isJust (satWith DPLL.sat expr3) @?= True
+    , testCase "expr4 is unsatisfiable" $ isJust (satWith DPLL.sat expr4) @?= False
+    , testCase "expr5 is unsatisfiable" $ isJust (satWith DPLL.sat expr5) @?= False
+    , testCase "expr6 is unsatisfiable" $ isJust (satWith DPLL.sat expr6) @?= False
     , testCase "GameUnequal is satisfiable" $ isJust (DPLL.sat $ conjunctiveNormalForm GameUnequal.example) @?= True
     ]
   , testGroup "Conflict Driven Clause Learning"
-    [ testCase "expr1 is satisfiable"   $ isJust (CDCL.sat $ toCNF expr1) @?= True
-    , testCase "expr2 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr2) @?= False
-    , testCase "expr3 is satisfiable"   $ isJust (CDCL.sat $ toCNF expr3) @?= True
-    , testCase "expr4 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr4) @?= False
-    , testCase "expr5 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr5) @?= False
-    , testCase "expr6 is unsatisfiable" $ isJust (CDCL.sat $ toCNF expr6) @?= False
+    [ testCase "expr1 is satisfiable"   $ isJust (satWith CDCL.sat expr1) @?= True
+    , testCase "expr2 is unsatisfiable" $ isJust (satWith CDCL.sat expr2) @?= False
+    , testCase "expr3 is satisfiable"   $ isJust (satWith CDCL.sat expr3) @?= True
+    , testCase "expr4 is unsatisfiable" $ isJust (satWith CDCL.sat expr4) @?= False
+    , testCase "expr5 is unsatisfiable" $ isJust (satWith CDCL.sat expr5) @?= False
+    , testCase "expr6 is unsatisfiable" $ isJust (satWith CDCL.sat expr6) @?= False
     , testCase "GameUnequal is satisfiable" $ isJust (CDCL.sat $ conjunctiveNormalForm GameUnequal.example) @?= True
     ]
   ]
@@ -106,33 +117,31 @@ propertyBasedTests =
     [ testProperty "Expression parsing is inverse of showing" prop_expr_parse_is_inverse_of_show
     , testProperty "`removeConstants` drops all boolean constants from an expression" prop_removes_all_boolean_constants
     , testProperty "A formula or its negation is always satisfiable" prop_identity_or_negation_satisfiable
-    , testProperty "Tseytin transformation preserves satisfiability" prop_tseytin_preserves_satisfiability
     , testProperty "Found assignment satisfies formula" prop_found_assigment_satisfies_formula
     , testProperty "DPLL and CDCL algorithm are equivalent" prop_dpll_cdcl_equivalent
     -- TODO
     -- negation of unsatifiable formula is tautology
     ]
 
-instance Arbitrary (Atom String) where 
-  arbitrary = frequency [ (4, var), (1, pure T), (1, pure F) ]
-    where
-      var :: Gen (Atom String)
-      var = do
-        -- FIXME: magic number
-        i <- chooseInt (0, 10)
-        return $ V ('x' : show i)
-
 instance Arbitrary (Expr String) where
   arbitrary = sized arbitrary_sized_expr
     where
+      var :: Gen String
+      var = do
+        -- FIXME: magic number
+        i <- chooseInt (0, 10)
+        return $ 'x' : show i
+
       arbitrary_sized_expr :: Int -> Gen (Expr String)
-      arbitrary_sized_expr 0 = Atom <$> arbitrary
+      arbitrary_sized_expr 0 = Atom <$> var
       arbitrary_sized_expr n = do
         op <- elements [And, Or, Impl, Equiv]
         op <$> arbitrary_sized_expr (n `div` 2) <*> arbitrary_sized_expr (n `div` 2)
 
   shrink expr =
     case expr of
+      T             -> []
+      F             -> []
       Atom atom     -> []
       Not e         -> e : shrink e
       e1 `And` e2   -> [e1, e2] ++ [ e1' `And`   e2' | (e1', e2') <- shrink (e1, e2) ]
@@ -145,41 +154,27 @@ prop_expr_parse_is_inverse_of_show expr =
   (fromString . show $ expr) == expr
 
 prop_removes_all_boolean_constants :: Expr String -> Bool
-prop_removes_all_boolean_constants expr = is_trivial expr' || not (contains_constant expr')
+prop_removes_all_boolean_constants expr = is_constant expr' || not (contains_constant expr')
   where
-    expr' = removeConstants expr
+    expr' = eliminateConstants expr
 
-    is_constant :: Atom a -> Bool
-    is_constant (V _) = False
-    is_constant _ = True
+    is_constant :: Expr a -> Bool
+    is_constant T = True
+    is_constant F = True
+    is_constant _ = False
 
-    is_trivial :: Expr a -> Bool
-    is_trivial (Atom at) = is_constant at
-    is_trivial _ = False
-
-    contains_constant :: Expr a -> Bool
-    contains_constant = any is_constant . atoms
-
-toCNF :: Expr String -> CNF String
-toCNF = conjunctiveNormalForm . tseytin
+    contains_constant :: Expr String -> Bool
+    contains_constant = any is_constant . subExpressions
 
 prop_found_assigment_satisfies_formula :: Expr String -> Bool
 prop_found_assigment_satisfies_formula expr = fromMaybe True $ do
-  model <- CDCL.sat (conjunctiveNormalForm $ tseytin expr)
-  return $ model |= tseytin expr
-
-prop_tseytin_preserves_satisfiability :: Expr String -> Bool
-prop_tseytin_preserves_satisfiability expr = fromMaybe True $ do
-  model <- CDCL.sat (conjunctiveNormalForm $ tseytin expr)
+  model <- satWith CDCL.sat expr
   return $ model |= expr
 
 prop_identity_or_negation_satisfiable :: Expr String -> Bool
-prop_identity_or_negation_satisfiable expr =
-  let identity = toCNF expr
-      negation = toCNF (Not expr)
-  in  isJust (CDCL.sat identity <|> CDCL.sat negation)
+prop_identity_or_negation_satisfiable expr = isJust $
+  satWith CDCL.sat expr <|> satWith CDCL.sat (Not expr)
 
 prop_dpll_cdcl_equivalent :: Expr String -> Bool
 prop_dpll_cdcl_equivalent expr =
-  let cnf = toCNF expr
-  in  isJust (DPLL.sat cnf) == isJust (CDCL.sat cnf)
+  isJust (satWith DPLL.sat expr) == isJust (satWith CDCL.sat expr)

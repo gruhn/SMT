@@ -1,5 +1,5 @@
 module GameUnequal (example, solutionFrom) where
-import Expression (Expr (..), Atom (..))
+import Expression (Expr (..))
 import Control.Monad (guard)
 import Assignment (Assignment)
 import qualified Data.Map as M
@@ -43,7 +43,7 @@ example = rulesForGrid 4
   `And` isLessThan 4 (4,4) (4,3)
 
 var :: Int -> Int -> Int -> Expr (Int,Int,Int)
-var row col num = Atom $ V (row, col, num)
+var row col num = Atom (row, col, num)
 
 isEqual :: (Int,Int) -> Int -> Expr (Int,Int,Int)
 isEqual (y,x) = var y x

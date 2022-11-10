@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module LinearResolution (sat) where
+module Algorithm.LinearResolution (sat) where
 
 import CNF (conjunctiveNormalForm, CNF, Literal (..), Clause, complement)
 import Expression (Expr)

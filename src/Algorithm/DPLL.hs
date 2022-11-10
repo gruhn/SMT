@@ -1,7 +1,7 @@
-module DPLL (sat) where
+module Algorithm.DPLL (sat) where
 
 import Expression (Expr)
-import CNF (conjunctiveNormalForm, CNF, Literal (..), complement, Clause, variables, variableName)
+import CNF (conjunctiveNormalForm, CNF, Literal (..), complement, Clause, variables)
 import qualified Data.Set as S
 import Data.Foldable (toList, find)
 import Data.Maybe (fromMaybe)

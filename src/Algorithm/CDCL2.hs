@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module CDCL2 (sat) where
+module Algorithm.CDCL2 (sat) where
 
 import Control.Monad
 import Control.Applicative

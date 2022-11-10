@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module CDCL (sat) where
+module Algorithm.CDCL (sat) where
 
 import Expression (Expr)
 import Assignment (Assignment)
