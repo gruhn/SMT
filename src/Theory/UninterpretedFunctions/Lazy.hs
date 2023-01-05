@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module Theory.UninterpretedFunctions where
+module Theory.UninterpretedFunctions.Lazy where
 import qualified Data.Set as S
 import Data.List (sort)
 import qualified Data.Map as M
@@ -47,7 +47,7 @@ equivalenceClasses equalities = foldr merge initial_classes equalities
     merge (t1 `Equals` t2) classes = 
       M.insert t2 (classes M.! t1) classes
 
-    assure_congruence = _
+    assure_congruence = undefined -- TODO
 
     implied_equalities :: Equality a -> [Equality a]
     implied_equalities eq@(t1 `Equals` t2) =
@@ -93,6 +93,7 @@ A possible solution is:
 
 -}
 
+{-
 caseStudyGameUnequal :: Expr (Equality (Int,Int))
 caseStudyGameUnequal = 
   rules_for_grid 4
@@ -156,4 +157,4 @@ caseStudyGameUnequal =
     --   $ fmap (\(row,col,val) -> ((row,col),val)) 
     --   $ M.keys 
     --   $ M.filter id assignment
-
+-}

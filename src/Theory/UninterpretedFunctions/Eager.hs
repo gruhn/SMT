@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE LambdaCase #-}
-module Theory.EagerUninterpretedFunctions where
+module Theory.UninterpretedFunctions.Eager where
 
 import Expression (Expr (..), conjunct, negationNormalForm)
 import qualified Expression as Expr
@@ -30,16 +30,17 @@ ignoreAuxVars = S.map ignore
       literal <- toList clause
       traverse get_var literal
 
-satWith :: (Expr (WithAux Equality) -> Maybe (Assignment (WithAux Equality)))
-        -> Expr Equality
-        -> Maybe (Assignment Equality)
-satWith sat expr = sat
-  $ encodeTransitivity
-  $ conjunctiveNormalForm
-  $ tseytin
-  $ encodeCongruence
-  $ negationNormalForm
-  $ expr
+-- TODO:
+-- satWith :: (Expr (WithAux Equality) -> Maybe (Assignment (WithAux Equality)))
+--         -> Expr Equality
+--         -> Maybe (Assignment Equality)
+-- satWith sat expr = sat
+--   $ encodeTransitivity
+--   $ conjunctiveNormalForm
+--   $ tseytin
+--   $ encodeCongruence
+--   $ negationNormalForm
+--   $ expr
 
 data Term =
     Var String
@@ -104,7 +105,7 @@ encodeTransitivity cnf =
   let (equalities, disequalites) = polarityPartition cnf
 
       generate_constraints :: Equality -> S.Set Equality -> CNF Equality
-      generate_constraints = _
+      generate_constraints = undefined -- TODO
 
       -- for all es ∈ E= do
         -- 3: Find B(es) = maximal BCC in GE made of es and E= edges;
@@ -112,7 +113,7 @@ encodeTransitivity cnf =
         -- 5: Make the graph B(es) chordal;  (The chords can be either solid or dashed)
         -- 6: Generate-constraints (B(es), es);
 
-  in _
+  in undefined  -- TODO
 
 biconnectedComponents :: S.Set Equality -> [S.Set Equality]
 biconnectedComponents edges = edges_from <$> biconnected_components
@@ -148,7 +149,7 @@ eGraph edges =
   in  (graph, fst' . node_form_vertex)
 
 simpleChordFreeCycles :: EqualityGraph -> [[Term]]
-simpleChordFreeCycles = _
+simpleChordFreeCycles = undefined -- TODO
 
 -- A graph is chordal iff every simple cycle over at least 4 different nodes has a chord.
 -- Given a chord-free cycle with at least 4 nodes:

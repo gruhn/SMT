@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedLists #-}
-module Theory.LinearRealArithmatic where
+module Theory.LinearArithmatic.FourierMotzkin where
 
 import Data.Ratio (Ratio)
 import qualified Data.Vector as V
