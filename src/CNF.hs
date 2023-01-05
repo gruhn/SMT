@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 module CNF where
 
 import Expression (Expr (..), negationNormalForm, eliminateConstants)
@@ -36,6 +37,21 @@ getVariable (Neg name) = name
 complement :: Literal a -> Literal a
 complement (Pos name) = Neg name
 complement (Neg name) = Pos name
+
+-- Partition literals based on polarity, i.e. collect all positive and all negative 
+-- literals and return as separate sets.
+polarityPartition :: Ord a => CNF a -> (S.Set a, S.Set a)
+polarityPartition cnf = (positives, negatives)
+  where
+    literals = toList $ S.unions $ toList cnf
+
+    positives = S.fromList $ literals >>= \case 
+      Pos a -> [a]
+      Neg _ -> []
+
+    negatives = S.fromList $ literals >>= \case 
+      Neg a -> [a]
+      Pos _ -> []
 
 -- Transforming a formula into CNF might take exponential time and space.
 -- However, the Tseytin encoding of a formula can be turned into CNF in

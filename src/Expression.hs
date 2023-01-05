@@ -159,7 +159,7 @@ parser :: Parser (Expr String)
 parser = expr
  where
   lexeme :: Parser a -> Parser a
-  lexeme = P.lexeme P.hspace
+  lexeme = P.lexeme (P.skipMany $ P.char ' ')
 
   atom :: Parser (Expr String)
   atom = P.choice [true, false, var]

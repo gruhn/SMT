@@ -14,6 +14,11 @@ library
                     -- , Algorithm.CDCL
                     , Algorithm.CDCL2
                     -- , Theory.UninterpretedFunctions
+                    , Theory.LinearRealArithmatic
+                    , Theory.BitVectors
+                    , Theory.NonLinearRealArithmatic.IntervalUnion
+                    , Theory.NonLinearRealArithmatic.Polynomial
+                    , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
     other-modules:    Utils
     build-depends:    base ^>=4.14.3.0
                     , megaparsec
@@ -21,6 +26,7 @@ library
                     , parser-combinators
                     , mtl
                     , extra
+                    , vector
     hs-source-dirs:   src
     default-language: Haskell2010
 

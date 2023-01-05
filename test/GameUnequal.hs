@@ -4,34 +4,42 @@ import Control.Monad (guard)
 import Assignment (Assignment)
 import qualified Data.Map as M
 
--- A game similar to sudoku. Given an n-by-n grid, can the cells be filled with numbers 
--- from 1 to n such that there are no duplicates in any row or column?
--- Some cells are prefilled or have an inequality between them (clues).
---
--- An example instance looks like this:
---
---      +---------------+
---      | 3   _ > _   _ | 
---      |             v |
---      | _   _ < _   _ |
---      |             ^ |
---      | _   _   _   _ |
---      |               |
---      | 1   _   _ > _ |
---      +---------------+
---
--- A possible solution is:
---
---      +---------------+
---      | 3   2 > 1   4 | 
---      |             v |
---      | 2   1 < 4   3 |
---      |             ^ |
---      | 4   3   2   2 |
---      |               |
---      | 1   4   3 > 2 |
---      +---------------+
---
+{-
+
+A game similar to sudoku. Given an n-by-n grid, can the cells be filled with numbers 
+from 1 to n such that there are no duplicates in any row or column?
+Some cells are prefilled or have an inequality between them (clues).
+
+An example instance looks like this:
+
+     +---------------+
+     | 3   _ > _   _ | 
+     |             v |
+     | _   _ < _   _ |
+     |             ^ |
+     | _   _   _   _ |
+     |               |
+     | 1   _   _ > _ |
+     +---------------+
+
+A possible solution is:
+
+     +---------------+
+     | 3   2 > 1   4 | 
+     |             v |
+     | 2   1 < 4   3 |
+     |             ^ |
+     | 4   3   2   2 |
+     |               |
+     | 1   4   3 > 2 |
+     +---------------+
+
+-}
+
+
+----------------------------------------
+-- Formulation in Propositional Logic
+
 example :: Expr (Int,Int,Int)
 example = rulesForGrid 4
   `And` isEqual (1,1) 3
