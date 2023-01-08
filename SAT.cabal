@@ -19,7 +19,7 @@ library
                     , Theory.LinearArithmatic.FourierMotzkin
                     , Theory.LinearArithmatic.Simplex
                     , Theory.LinearArithmatic.BranchAndBound
-                    , Theory.NonLinearRealArithmatic.IntervalUnion
+                    , Theory.NonLinearRealArithmatic.Interval
                     , Theory.NonLinearRealArithmatic.Polynomial
                     , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
     other-modules:    Utils
@@ -32,6 +32,7 @@ library
                     , vector
     hs-source-dirs:   src
     default-language: Haskell2010
+    default-extensions: ScopedTypeVariables
 
 test-suite test
     type:             exitcode-stdio-1.0 
