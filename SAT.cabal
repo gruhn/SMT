@@ -22,6 +22,9 @@ library
                     , Theory.NonLinearRealArithmatic.Interval
                     , Theory.NonLinearRealArithmatic.Polynomial
                     , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
+                    , Theory.NonLinearRealArithmatic.Subtropical
+                    , Theory.NonLinearRealArithmatic.VirtualSubstitution
+                    , Theory.NonLinearRealArithmatic.CAD
     other-modules:    Utils
     build-depends:    base ^>=4.14.3.0
                     , megaparsec

@@ -1,4 +1,3 @@
-
 -- |
 -- We are given a list of non-linear real constraints and an 
 -- interval domain for each variable that appears in one of the constraints. 
@@ -105,7 +104,6 @@ eval var_domains expr = Interval.reduce $
       value1 <- eval var_domains expr1
       value2 <- eval var_domains expr2
       evalBinaryOp op_symbol value1 value2
-
 
 -- | List of variables paired with their positive integer exponents.
 type Monomial = [(Var, Int)]
@@ -227,31 +225,42 @@ solveFor = undefined
 
 -- | 
 preprocess :: forall a. (Ord a, Num a, Bounded a, Floating a) => [Constraint a] -> [Constraint a]
-preprocess constraints = undefined -- TODO
-  where
-    (_, all_expressions) = unzip constraints
+preprocess constraints = do
+  -- Identify largest used variable ID, to generate fresh variables.
+  let max_var = maximum (maximum . varsIn . snd <$> constraints)
 
-    -- Identify largest used variable ID, to generate fresh variables.
-    max_var = maximum (maximum . varsIn <$> all_expressions)
+  (rel, expr) <- constraints
 
-    go :: Var -> Constraint a -> [Constraint a]
-    go max_var (rel, expr) = (rel, new_expr) : []
-      where
-        (linear_terms, non_linear_terms) = L.partition (isLinear . snd) (normalize expr)
+  let terms = normalize expr
+      (linear_terms, non_linear_terms) = L.partition (isLinear . snd) terms
 
-        new_vars = [ max_var+i | i <- [1 .. length non_linear_terms] ]
+  (new_var, non_linear_term) <- zip [max_var+1 ..] non_linear_terms
+  
+  []
 
-        f :: Var -> (a, Monomial) -> (a, Monomial)
-        f new_var (coeff, _) = (coeff, [(new_var, 1)])
+  -- where
+  --   (_, all_expressions) = unzip constraints
+
+  --   max_var = maximum (maximum . varsIn <$> all_expressions)
+
+  --   go :: Var -> Constraint a -> [Constraint a]
+  --   go max_var (rel, expr) = (rel, new_expr) : []
+  --     where
+  --       (linear_terms, non_linear_terms) = L.partition (isLinear . snd) (normalize expr)
+
+  --       new_vars = [ max_var+i | i <- [1 .. length non_linear_terms] ]
+
+  --       f :: Var -> (a, Monomial) -> (a, Monomial)
+  --       f new_var (coeff, _) = (coeff, [(new_var, 1)])
         
-        new_expr = denormalize $ linear_terms <> zipWith f new_vars non_linear_terms
+  --       new_expr = denormalize $ linear_terms <> zipWith f new_vars non_linear_terms
 
-    new_constraint :: VarDomains a -> Var -> Monomial -> Constraint a
-    new_constraint var_domains new_var monomial = (Equals, BinaryOp Sub (Var new_var) monomial_expr)
-      where
-        monomial_expr = denormalize [(1, monomial)]
+  --   new_constraint :: VarDomains a -> Var -> Monomial -> Constraint a
+  --   new_constraint var_domains new_var monomial = (Equals, BinaryOp Sub (Var new_var) monomial_expr)
+  --     where
+  --       monomial_expr = denormalize [(1, monomial)]
 
-        new_var_domain = eval var_domains monomial_expr
+  --       new_var_domain = eval var_domains monomial_expr
 
 contract :: forall a. (Ord a, Bounded a, Floating a) => VarDomains a -> [Constraint a] -> VarDomains a
 contract var_domains0 = foldr go var_domains0 . preprocess
