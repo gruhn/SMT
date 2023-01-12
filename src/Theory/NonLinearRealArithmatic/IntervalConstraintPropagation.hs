@@ -34,6 +34,7 @@ import qualified Data.List as L
 import Theory.NonLinearRealArithmatic.Interval (Interval)
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
 import Control.Arrow ( Arrow(second, first) )
+import Control.Monad ( guard )
 import Data.Function ( on )
 import qualified Theory.NonLinearRealArithmatic.Interval as Inverval
 
@@ -108,7 +109,15 @@ eval var_domains expr = Interval.reduce $
 -- | List of variables paired with their positive integer exponents.
 type Monomial = [(Var, Int)]
 
-type NormalExpr a = [(a, Monomial)]
+data NormalTerm a = NTerm { getCoeff :: a, getMonomial :: Monomial }
+
+modifyCoeff :: (a -> a) -> NormalTerm a -> NormalTerm a
+modifyCoeff f (NTerm coeff monomial) = NTerm (f coeff) monomial
+
+modifyMonomial :: (Monomial -> Monomial) -> NormalTerm a -> NormalTerm a
+modifyMonomial f (NTerm coeff monomial) = NTerm coeff (f monomial)
+
+-- data NormalExpr a = NormalExpr { getCoeff :: a, getMonomial :: Monomial }
 
 -- | Bring expression to normal form:
 -- 
@@ -122,7 +131,7 @@ type NormalExpr a = [(a, Monomial)]
 -- 
 -- TODO: property test "expression is equivalent to its normal form"
 --
-normalize :: forall a. (Ord a, Num a) => Expr a -> NormalExpr a
+normalize :: forall a. (Ord a, Num a) => Expr a -> [NormalTerm a]
 normalize = sum_coeffs . expand
   where
     -- Multiply out nested expressions and eliminate subtractions until
@@ -130,16 +139,16 @@ normalize = sum_coeffs . expand
     -- a constant coefficient and a monomial. That leaves potentially 
     -- many terms that can be summed up and combined into one term. 
     -- Do that separately with `sum_coeffs`.
-    expand :: Expr a -> NormalExpr a
+    expand :: Expr a -> [NormalTerm a]
     expand expr =
       case expr of
-        Var var -> [ (1, [(var, 1)]) ]
-        Const a -> [ (a, []) ]
+        Var var -> [ NTerm 1 [(var, 1)] ]
+        Const a -> [ NTerm a [] ]
 
         UnaryOp (Root _) _ -> error "Roots in user provided expressions not supported"
 
-        UnaryOp (Exp n) (Const a) -> [ (a^n, []) ]
-        UnaryOp (Exp n) (Var var) -> [ (1, [(var, n)]) ]
+        UnaryOp (Exp n) (Const a) -> [ NTerm (a^n) [] ]
+        UnaryOp (Exp n) (Var var) -> [ NTerm 1 [(var, n)] ]
         UnaryOp (Exp n) expr -> 
           if n < 1 then 
             error "Non-positive exponents not supported"
@@ -152,14 +161,14 @@ normalize = sum_coeffs . expand
           expand expr1 <> expand expr2
 
         BinaryOp Sub expr1 expr2 -> 
-          expand expr1 <> (first negate <$> expand expr2)
+          expand expr1 <> (modifyCoeff negate <$> expand expr2)
 
         BinaryOp Div _ _ -> error "Division in user provided expressions not supported"
 
         BinaryOp Mul expr1 expr2 -> do
-          (coeff1, vars1) <- expand expr1
-          (coeff2, vars2) <- expand expr2
-          return (coeff1*coeff2, sum_exponents (vars1 <> vars2))
+          NTerm coeff1 vars1 <- expand expr1
+          NTerm coeff2 vars2 <- expand expr2
+          return $ NTerm (coeff1*coeff2) $ sum_exponents (vars1 <> vars2)
 
     -- Sum up exponents of same variables.
     sum_exponents :: Monomial -> Monomial
@@ -184,20 +193,20 @@ normalize = sum_coeffs . expand
     --
     --  4.  Some terms now might have coefficient `0`. Filter them out.
     --
-    sum_coeffs :: NormalExpr a -> NormalExpr a
-    sum_coeffs = filter ((/= 0) . fst) . go . L.sortBy (compare `on` snd) . fmap (second L.sort)
+    sum_coeffs :: [NormalTerm a] -> [NormalTerm a]
+    sum_coeffs = filter ((/= 0) . getCoeff) . go . L.sortBy (compare `on` getMonomial) . fmap (modifyMonomial L.sort)
       where
-        go :: NormalExpr a -> NormalExpr a 
-        go ((coeff1, monomial1) : (coeff2, monomial2) : terms)
-          | monomial1 == monomial2 = go ((coeff1+coeff2, monomial1) : terms)
-          | otherwise = (coeff1, monomial1) : go ((coeff2, monomial2) : terms)
+        go :: [NormalTerm a] -> [NormalTerm a]
+        go ((NTerm coeff1 monomial1) : (NTerm coeff2 monomial2) : terms)
+          | monomial1 == monomial2 = go (NTerm (coeff1+coeff2) monomial1 : terms)
+          | otherwise = NTerm coeff1 monomial1 : go (NTerm coeff2 monomial2 : terms)
         go terms = terms
 
-denormalize :: NormalExpr a -> Expr a
+denormalize :: [NormalTerm a] -> Expr a
 denormalize = foldr1 (BinaryOp Add) . fmap from_term
   where
-    from_term :: (a, Monomial) -> Expr a
-    from_term (coeff, monomial) = 
+    from_term :: NormalTerm a -> Expr a
+    from_term (NTerm coeff monomial) = 
       foldr (BinaryOp Mul) (Const coeff) (from_var <$> monomial)
 
     from_var :: (Var, Int) -> Expr a
@@ -224,43 +233,45 @@ solveFor :: Expr a -> Var -> Expr a
 solveFor = undefined
 
 -- | 
-preprocess :: forall a. (Ord a, Num a, Bounded a, Floating a) => [Constraint a] -> [Constraint a]
-preprocess constraints = do
-  -- Identify largest used variable ID, to generate fresh variables.
+preprocess :: forall a. (Ord a, Num a, Bounded a, Floating a) => VarDomains a -> [Constraint a] -> [(VarDomains a, Constraint a)]
+preprocess var_domains constraints = do
+  -- Identify largest used variable ID, to later generate fresh variables it.
   let max_var = maximum (maximum . varsIn . snd <$> constraints)
+      fresh_vars = [max_var+1 ..]
 
   (rel, expr) <- constraints
-
-  let terms = normalize expr
-      (linear_terms, non_linear_terms) = L.partition (isLinear . snd) terms
-
-  (new_var, non_linear_term) <- zip [max_var+1 ..] non_linear_terms
   
-  []
-
-  -- where
-  --   (_, all_expressions) = unzip constraints
-
-  --   max_var = maximum (maximum . varsIn <$> all_expressions)
-
-  --   go :: Var -> Constraint a -> [Constraint a]
-  --   go max_var (rel, expr) = (rel, new_expr) : []
-  --     where
-  --       (linear_terms, non_linear_terms) = L.partition (isLinear . snd) (normalize expr)
-
-  --       new_vars = [ max_var+i | i <- [1 .. length non_linear_terms] ]
-
-  --       f :: Var -> (a, Monomial) -> (a, Monomial)
-  --       f new_var (coeff, _) = (coeff, [(new_var, 1)])
+  let terms = normalize expr
+      terms_with_fresh_vars = zip terms fresh_vars
+      
+      g :: NormalTerm a -> Int -> NormalTerm a
+      g (NTerm coeff monomial) fresh_var
+        | isLinear monomial = NTerm coeff monomial
+        | otherwise         = NTerm coeff [(fresh_var, 1)]
         
-  --       new_expr = denormalize $ linear_terms <> zipWith f new_vars non_linear_terms
+      terms' = uncurry g <$> terms_with_fresh_vars
+      constraint' = (rel, denormalize terms')
+      
+      non_linear_terms_with_fresh_vars = filter (not . isLinear . getMonomial . fst) terms_with_fresh_vars
 
-  --   new_constraint :: VarDomains a -> Var -> Monomial -> Constraint a
-  --   new_constraint var_domains new_var monomial = (Equals, BinaryOp Sub (Var new_var) monomial_expr)
-  --     where
-  --       monomial_expr = denormalize [(1, monomial)]
+      -- | 
+      -- For each newly added variable h_i, create a new constraint 
+      --
+      --     m_i - h_i = 0
+      -- 
+      -- and initialize the bounds of h_i to the interval we get when we substitute the
+      -- variable bounds in m_i and evaluate the result using interval arithmetic
+      -- (note: the result will always be a single interval because there is no
+      -- division or square root in mi).
+      h :: NormalTerm a -> Int -> (VarDomains a, Constraint a)
+      h term fresh_var = (var_domain, new_constr)
+        where
+          new_constr = (Equals, denormalize [ term, NTerm (-1) [(fresh_var, 1)] ])
+          [ int ] = eval var_domains (denormalize [term])
+          var_domain = M.singleton fresh_var int
+      
+  (M.empty, constraint') : (uncurry h <$> non_linear_terms_with_fresh_vars)
 
-  --       new_var_domain = eval var_domains monomial_expr
 
 contract :: forall a. (Ord a, Bounded a, Floating a) => VarDomains a -> [Constraint a] -> VarDomains a
 contract var_domains0 = foldr go var_domains0 . preprocess
