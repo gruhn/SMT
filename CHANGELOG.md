@@ -1,4 +1,4 @@
-# Revision history for SAT
+# Revision history for SMT
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

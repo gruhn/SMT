@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               SAT
+name:               SMT
 version:            0.1.0.0
 author:             Niklas Gruhn
 maintainer:         niklas@gruhn.me
