@@ -1,14 +1,18 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module Theory.NonLinearRealArithmatic.Interval where
 
 -- TODO: extend to multivariate intervals
 
+import qualified Data.IntMap as M
 import qualified Data.Vector as V
 import Data.Vector (Vector)
 import Data.Function (on)
 import Data.List (sortBy)
 
 data Interval a = (:..:) { lowerBound :: a, upperBound :: a }
+
+-- TODO: is this a good operator precedence? It should at least be lower then 6, otherwise
+-- (-3 :..: 4) is read as -(3 :..: 4) == (-4 :..: -3).
+infixr 5 :..:
 
 -- >>> diameter $ (-5) :..: 10
 -- 15
@@ -71,11 +75,16 @@ intersection int1@(lb1 :..: ub1) int2@(lb2 :..: ub2)
 
 square :: (Ord a, Num a, Bounded a) => Interval a -> Interval a
 square int = (int * int) `intersection` (0 :..: maxBound)
---
+
+power :: (Ord a, Num a, Bounded a) => Interval a -> Int -> Interval a
+power int n
+  | even n    = (int ^ n) `intersection` (0 :..: maxBound)
+  | otherwise = int ^ n
+
 -- >>> squareRoot $ 0 :..: 4
 -- [-2.0 :..: -0.0,0.0 :..: 2.0]
 
--- >>> squareRoot $ (-4)  :..: 4
+-- >>> squareRoot $ (-4) :..: 4
 -- [-2.0 :..: 2.0]
 
 -- >>> squareRoot $ 1 :..: 4
@@ -86,6 +95,11 @@ squareRoot (lb :..: ub)
   | 0 <= lb = [ (-sqrt ub) :..: (-sqrt lb), sqrt lb :..: sqrt ub ]
   | lb <= 0 && 0 <= ub = [ (-sqrt ub) :..: sqrt ub ]
   | otherwise = [ empty ]
+  
+root :: (Ord a, Floating a) => Interval a -> Int -> [Interval a]
+root int 1 = [int]
+root int 2 = squareRoot int
+root int n = error "TODO: extend interval arithmatic to arbitrary integer roots"
 
 -- >>> reduce [ 4 :..: 8, 0 :..: 3, 5 :..: 6, 7 :..: 12, 1 :..: 3 ]
 -- [0 :..: 3,4 :..: 12]
@@ -133,4 +147,3 @@ reciprocal (lb :..: ub)
 --   fromRational x = IntervalUnion [ fromRational x :..: fromRational x ]
 
 --   recip = IntervalUnion . concatMap reciprocal . getIntervals
-

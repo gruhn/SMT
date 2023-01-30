@@ -1,7 +1,5 @@
 module Theory.NonLinearRealArithmatic.Expr where
 
-import qualified Theory.NonLinearRealArithmatic.Interval as Interval
-import Theory.NonLinearRealArithmatic.Interval ( Interval )
 import qualified Data.IntMap as M
 import Data.IntMap ( IntMap )
 import qualified Data.List as L
@@ -25,16 +23,19 @@ data Expr a =
   | UnaryOp UnaryOp (Expr a)
   | BinaryOp BinaryOp (Expr a) (Expr a)
 
-data Relation = LessThan | Equals | LessThanOrEquals
+-- | Collects all variables that appear in an expression.
+varsIn :: Expr a -> [Var]
+varsIn expr = case expr of 
+  Var var -> [var]
+  Const _ -> []
+  UnaryOp _ sub_expr -> varsIn sub_expr
+  BinaryOp _ sub_expr1 sub_expr2 ->
+    nubOrd (varsIn sub_expr1 <> varsIn sub_expr2)
 
--- | Assuming the expression forms the left-hand-side of the relation, 
--- while the right-hand-side is always zero, e.g. 
--- 
---    x + 3*y - 10 <= 0
--- 
-type Constraint a = (Relation, Expr a)
+{-
 
--- Expression evaluation using interval arithmatic
+domainOf :: Bounded a => Var -> VarDomains a -> Interval a
+domainOf = M.findWithDefault Interval.greatest
 
 evalUnaryOp :: (Ord a, Num a, Bounded a, Floating a) => UnaryOp -> Interval a -> [Interval a]
 evalUnaryOp symbol int = 
@@ -55,13 +56,8 @@ evalBinaryOp symbol int1 int2 =
       int2' <- Interval.reciprocal int2
       return (int1 * int2)
 
-type VarDomains a = IntMap (Interval a)
-
-domainOf :: Bounded a => Var -> VarDomains a -> Interval a
-domainOf = M.findWithDefault Interval.greatest
-
-eval :: (Ord a, Bounded a, Floating a) => VarDomains a -> Expr a -> [Interval a]
-eval var_domains expr = Interval.reduce $
+evalExpr :: (Ord a, Bounded a, Floating a) => VarDomains a -> Expr a -> [Interval a]
+evalExpr var_domains expr = reduce $
   case expr of
     Var var -> [ domainOf var var_domains ]
 
@@ -75,16 +71,4 @@ eval var_domains expr = Interval.reduce $
       value1 <- eval var_domains expr1
       value2 <- eval var_domains expr2
       evalBinaryOp op_symbol value1 value2
-
--- | Collects all variables that appear in an expression.
-varsIn :: Expr a -> [Var]
-varsIn expr = case expr of 
-  Var var -> [var]
-  Const _ -> []
-  UnaryOp _ sub_expr -> varsIn sub_expr
-  BinaryOp _ sub_expr1 sub_expr2 ->
-    nubOrd (varsIn sub_expr1 <> varsIn sub_expr2)
-
--- TODO
-solveFor :: Expr a -> Var -> Expr a
-solveFor = undefined
+-}

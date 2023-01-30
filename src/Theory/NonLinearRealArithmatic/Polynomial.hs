@@ -1,12 +1,22 @@
+-- TODO: make sure polynomials are always normalized 
+--    
+--   * filter out 0 coeffitions
+--   * join terms with same monomial
+--   * no zero exponents
+--   * more?
+--
 module Theory.NonLinearRealArithmatic.Polynomial where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
-import qualified Data.Vector as V
 import qualified Data.List as L
 import qualified Data.IntMap as M
 import qualified Data.IntSet as S
+import qualified Data.List as List
 import Data.IntMap ( IntMap )
 import Data.Function ( on )
+import Data.Containers.ListUtils ( nubOrd )
+import Control.Monad ( guard )
+import Data.Maybe ( maybeToList )
 
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
@@ -18,7 +28,6 @@ modifyCoeff f (Term coeff monomial) = Term (f coeff) monomial
 
 modifyMonomial :: (Monomial -> Monomial) -> Term a -> Term a
 modifyMonomial f (Term coeff monomial) = Term coeff (f monomial)
-
 
 newtype Polynomial a = Polynomial { getTerms :: [Term a] }
 
@@ -39,6 +48,12 @@ instance (Ord a, Num a) => Num (Polynomial a) where
 
   fromInteger i = Polynomial [Term (fromInteger i) M.empty]
   
+instance Functor Term where
+  fmap f (Term coeff monomial) = Term (f coeff) monomial
+
+instance Functor Polynomial where
+  fmap f (Polynomial terms) = Polynomial (fmap (fmap f) terms)
+  
 -- Combine terms with same monomial, e.g. combine 3*x*y and 2*y*x to 5*x*y.
 --
 --  1.  Sort the terms BY the monomials, so equal monomials are next to each other. 
@@ -48,7 +63,7 @@ instance (Ord a, Num a) => Num (Polynomial a) where
 --  3.  Some terms now might have coefficient `0`. Filter them out.
 --
 combineTerms :: forall a. (Num a, Ord a) => [Term a] -> [Term a]
-combineTerms = filter ((/= 0) . getCoeff) . go . L.sortBy (compare `on` getMonomial)
+combineTerms = filter ((/= 0) . getCoeff) . go . List.sortOn getMonomial
   where
     go :: [Term a] -> [Term a]
     go (Term coeff1 monomial1 : Term coeff2 monomial2 : terms)
@@ -141,25 +156,40 @@ isLinear monomial = is_zero || is_unit
 
     is_zero = null non_zero_exponents
     is_unit = [1] == non_zero_exponents
+
+termDegree :: Term a -> Int
+termDegree = sum . getMonomial
     
 degree :: (Num a, Ord a) => Polynomial a -> Int
-degree = maximum . fmap (sum . getMonomial) . getTerms
+degree = maximum . fmap termDegree . getTerms
 
-eval :: forall a. Num a => IntMap a -> Polynomial a -> a
-eval assignment polynomial = sum (eval_term <$> getTerms polynomial)
+-- TODO: does that make sense for multivariate polynomials?
+cauchyBound :: (Fractional a, Ord a) => Polynomial a -> a
+cauchyBound polynomial = 1 + maximum [ abs (coeff / top_coeff) | coeff <- coeffs ]
   where
-    eval_term :: Term a -> a
-    eval_term (Term coeff monomial) = coeff * eval_monomial monomial
-    
-    eval_monomial :: Monomial -> a
-    eval_monomial monomial = value
-      where
-        vars = S.toList $ M.keysSet assignment <> M.keysSet monomial
-    
-        get_base var = M.findWithDefault 1 var assignment
-        get_exp var = M.findWithDefault 0 var monomial
-    
-        value = product [ get_base var ^ get_exp var | var <- vars ]
-
-varsIn :: Polynomial a -> S.IntSet
-varsIn = S.unions . fmap (M.keysSet . getMonomial) . getTerms
+    -- Extract highest degree term with non-zero coefficient.
+    (top_coeff : coeffs) =
+        filter (/= 0)
+      $ fmap getCoeff
+      $ List.sortOn (negate . termDegree) 
+      $ getTerms polynomial
+      
+varsIn :: Polynomial a -> [Var]
+varsIn (Polynomial terms) = 
+  nubOrd (terms >>= M.keys . getMonomial)
+  
+containsVar :: Var -> Term a -> Bool
+containsVar var (Term _ monomial) = 
+  case M.lookup var monomial of
+    Nothing -> False
+    Just 0  -> False -- TODO: make sure this never occurs
+    Just _  -> True
+  
+extractTerm :: Var -> Polynomial a -> Maybe (Term a, [Term a])
+extractTerm var (Polynomial terms) = go [] terms
+  where
+    go :: [Term a] -> [Term a] -> Maybe (Term a, [Term a])
+    go init [] = Nothing
+    go init (term : tail)
+      | containsVar var term = Just (term, reverse init <> tail)
+      | otherwise            = go (term : init) tail
