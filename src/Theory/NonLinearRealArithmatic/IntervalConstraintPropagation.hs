@@ -25,21 +25,26 @@
 -- tighter bounds for `x`. This method is not guaranteed to narrow the bounds
 -- down to point intervals. Stop if convergence is less some threshold.
 
+-- TODO: Also implement Newton constraction method
+
 module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation () where
 
-import Theory.NonLinearRealArithmatic.Interval ( Interval )
+import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval 
 import Theory.NonLinearRealArithmatic.Expr ( Expr,  Var )
 import qualified Theory.NonLinearRealArithmatic.Expr as Expr
-import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial(Polynomial), Term(Term), Monomial )
+import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial(Polynomial), Term(Term), Monomial, exponentOf )
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
 import qualified Data.IntMap as M
 import qualified Data.List as List
 import Control.Monad.State ( State )
 import qualified Control.Monad.State as State
 import Data.Containers.ListUtils ( nubOrd )
+import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion (IntervalUnion))
+import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
+import Theory.NonLinearRealArithmatic.BoundedFloating
 
-type VarDomains a = M.IntMap (Interval a)
+type VarDomains a = M.IntMap (IntervalUnion a)
 
 data ConstraintRelation = StrictLessThan | WeakLessThan | Equals
 
@@ -81,8 +86,8 @@ preprocess initial_var_domains initial_constraints = (updated_var_domains, updat
     
         -- Then we initialize the domain of the new variable by evaluating x^2
         -- via interval arithmatic (since h = x^2).
-        let fresh_var_domain :: Interval a
-            fresh_var_domain = eval var_domains (Polynomial [ Term (Interval.singleton coeff) monomial ])    
+        let fresh_var_domain :: IntervalUnion a
+            fresh_var_domain = eval var_domains (Polynomial [ Term (IntervalUnion.singleton coeff) monomial ])    
              
         State.put 
           ( fresh_var + 1
@@ -109,18 +114,18 @@ preprocess initial_var_domains initial_constraints = (updated_var_domains, updat
     (updated_constraints, final_state) = State.runState (mapM preprocess_constraint initial_constraints) initial_state
     (_, side_conditions, updated_var_domains) = final_state
 
-evalMonomial:: (Bounded a, Num a, Ord a) => VarDomains a -> Monomial -> Interval a
-evalMonomial assignment = product . M.intersectionWith Interval.power assignment
+evalMonomial:: (Bounded a, Num a, Ord a) => VarDomains a -> Monomial -> IntervalUnion a
+evalMonomial assignment = product . M.intersectionWith IntervalUnion.power assignment
 
-evalTerm :: (Bounded a, Ord a, Num a) => VarDomains a -> Term (Interval a) -> Interval a
+evalTerm :: (Bounded a, Ord a, Num a) => VarDomains a -> Term (IntervalUnion a) -> IntervalUnion a
 evalTerm assignment (Term coeff monomial) = 
-  coeff * evalMonomial assignment monomial
+  fromIntegral coeff * evalMonomial assignment monomial
  
-eval :: (Bounded a, Ord a, Num a) => VarDomains a -> Polynomial (Interval a) -> Interval a
+eval :: (Bounded a, Ord a, Num a) => VarDomains a -> Polynomial (IntervalUnion a) -> IntervalUnion a
 eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
 
 -- |
--- Take a constraint, e.g.
+-- Take a constraint such as
 --     
 --    x^2 + 3y + 10 < 0 
 --
@@ -131,44 +136,55 @@ eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
 -- and evaluate the right-hand-side. It's assumed that the constraint 
 -- has been preprocessed before. Otherwise it's not possible, in general, 
 -- to solve for any variable.
-solveFor :: (Ord a, Num a, Floating a, Bounded a) => Var -> Constraint a -> VarDomains a -> [Interval a]
+solveFor :: (Ord a, Num a, Floating a, Bounded a) => Var -> Constraint a -> VarDomains a -> IntervalUnion a
 solveFor var (rel, polynomial) var_domains = 
   let 
     Just (Term coeff monomial, rest_terms) = Polynomial.extractTerm var polynomial
   
     -- bring all other terms to the right-and-side
     rhs_terms = eval var_domains   
-      $ Polynomial (fmap (Interval.singleton . negate) <$> rest_terms)
+      $ Polynomial (fmap (IntervalUnion.singleton . negate) <$> rest_terms)
   
     -- extract remaining coefficients of `var`
     divisor = evalTerm var_domains
-      $ Term (Interval.singleton coeff) (M.delete var monomial)
+      $ Term (IntervalUnion.singleton coeff) (M.delete var monomial)
+
+  in
+    IntervalUnion.root (rhs_terms / divisor) (exponentOf var monomial)
     
-    -- get the exponent to take the root, in case the exponent not 1
-    exponent = monomial M.! var
-
-  in do
-    -- computing the reciprocal may already split the interval
-    recip <- Interval.reciprocal divisor
-    Interval.root (rhs_terms * recip) exponent
+-- |
+contract :: (Num a, Ord a, Floating a, Bounded a) => Var -> Constraint a -> VarDomains a -> VarDomains a
+contract var constraint var_domains = M.insert var new_domain var_domains
+  where
+    old_domain = var_domains M.! var
+    solution = solveFor var constraint var_domains
+    -- TODO: intersection only true for equalities
+    new_domain = IntervalUnion.intersection old_domain solution
     
-type ContractionCandidate a = (Var, [Interval a], a)
+-- | 
+contractAll :: forall a. (Ord a, Bounded a, Floating a) => [Constraint a] -> VarDomains a -> VarDomains a
+contractAll constraints initial_domains = foldr accum initial_domains contraction_candidates
+  where
+    contraction_candidates = do
+      constraint <- constraints
+      var <- varsIn [constraint]
+      return (var, constraint)
+
+    accum :: (Var, Constraint a) -> VarDomains a -> VarDomains a
+    accum (var, constraint) var_domains = contract var constraint var_domains 
+
+example :: [VarDomains BoundedFractional]
+example = 
+  let 
+    -- 2x - 3y = 0    
+    c1 = (Equals, Polynomial [ Term 2 (M.singleton 1 1), Term (-3) (M.singleton 2 1) ]) 
+
+     -- x^2 - 2y = 
+    c2 = (Equals, Polynomial [ Term 1 (M.singleton 1 2), Term (-2) (M.singleton 2 1) ]) 
+
+    initial = IntervalUnion [ 1 :..: 10 ]
+
+    domains0 = M.fromList [(1, initial), (2, initial)]
+
+  in iterate (contractAll [c1,c2]) domains0
     
-contractionCandidates :: forall a. (Ord a, Bounded a, Floating a) => VarDomains a -> [Constraint a] -> [ContractionCandidate a]
-contractionCandidates var_domains constraints = do 
-  var <- M.keys var_domains
-
-  let old_domain = var_domains M.! var
-      old_diameter = Interval.diameter old_domain
-
-  constraint <- constraints
-  
-  let new_domain = solveFor var constraint var_domains
-      new_diameter = sum (Interval.diameter <$> new_domain)
-  
-  let relative_contraction = (old_diameter - new_diameter) / old_diameter
-  
-  return (var, new_domain, relative_contraction)
-
-
--- TODO: Newton Constraction Method

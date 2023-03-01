@@ -21,6 +21,9 @@ import Data.Maybe ( maybeToList )
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
 
+exponentOf :: Var -> Monomial -> Int
+exponentOf = M.findWithDefault 0
+
 data Term a = Term { getCoeff :: a, getMonomial :: Monomial }
 
 modifyCoeff :: (a -> a) -> Term a -> Term a
@@ -71,14 +74,18 @@ combineTerms = filter ((/= 0) . getCoeff) . go . List.sortOn getMonomial
       | otherwise = Term coeff1 monomial1 : go (Term coeff2 monomial2 : terms)
     go terms = terms
 
---- TODO: make polynomial instance of Num
--- newtype Polynomial' a = Polynomial' { getTerms :: [Term a] }
--- instance Num a => Num (Polynomial' a) where
---   p1 + p2 = j
-
-
-derivative :: Polynomial a -> Polynomial a
-derivative = undefined -- TODO
+-- | Computes the partial derivative of a polynomial with respect to a given Var.
+partialDerivative :: forall a. (Eq a, Num a) => Var -> Polynomial a -> Polynomial a
+partialDerivative var (Polynomial terms) =
+  let 
+    go :: Term a -> Term a
+    go (Term coeff monomial) = Term new_coeff new_monomial
+      where
+        exp = exponentOf var monomial
+        new_coeff = coeff * fromIntegral exp
+        new_monomial = M.insert var (exp-1) monomial
+  in
+    Polynomial $ filter ((/= 0) . getCoeff) $ go <$> terms
 
 -- | Bring expression into normal form as a polynomial: 
 -- 
@@ -124,14 +131,6 @@ fromExpr = expand
         BinaryOp Sub expr1 expr2 -> expand expr1 - expand expr2
         BinaryOp Mul expr1 expr2 -> expand expr1 * expand expr2
         BinaryOp Div _ _ -> error "Division in user provided expressions not supported"
-
-    -- -- Make sure each monomial has default entry of zero for each 
-    -- -- variable that is in use in the polynomial.        
-    -- fill :: Polynomial a -> Polynomial a
-    -- fill polynomial = polynomial'
-    --   where
-    --     zero = M.fromSet (const 0) (varsIn polynomial)
-    --     polynomial' =  modifyMonomial (<> zero) <$> polynomial
 
 toExpr :: forall a. (Ord a, Num a) => Polynomial a -> Expr a
 toExpr = foldr1 (BinaryOp Add) . fmap from_term . getTerms
