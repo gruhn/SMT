@@ -7,6 +7,7 @@ module Expression
   , negationNormalForm
   , eliminateConstants
   , subExpressions
+  , fromString
   ) where
 
 import           Control.Applicative            ( many

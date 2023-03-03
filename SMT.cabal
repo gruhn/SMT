@@ -1,12 +1,13 @@
 cabal-version:      2.4
-name:               SMT
+name:               SMT-solver
 version:            0.1.0.0
 author:             Niklas Gruhn
 maintainer:         niklas@gruhn.me
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Expression
+    exposed-modules:  CLI
+                    , Expression
                     , Assignment
                     , CNF
                     , Algorithm.LinearResolution
