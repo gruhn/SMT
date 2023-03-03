@@ -1,9 +1,9 @@
 module Theory.NonLinearRealArithmatic.BoundedFloating where
 
-data BoundedFractional a = PosInf | NegInf | Val a
+data BoundedFloating a = PosInf | NegInf | Val a
   deriving (Eq, Show)
 
-instance Ord a => Ord (BoundedFractional a) where
+instance Ord a => Ord (BoundedFloating a) where
   _ <= PosInf = True
   PosInf <= y = y == PosInf
 
@@ -12,26 +12,28 @@ instance Ord a => Ord (BoundedFractional a) where
 
   Val x <= Val y = x <= y
 
-instance Fractional a => Bounded (BoundedFractional a) where
+instance Fractional a => Bounded (BoundedFloating a) where
   minBound = NegInf
   maxBound = PosInf
 
-instance Num a => Num (BoundedFractional a) where
-  PosInf + NegInf = undefined
-  NegInf + PosInf = undefined
+instance (Num a, Eq a) => Num (BoundedFloating a) where
+  PosInf + NegInf = error "Trying to compute: +oo + -oo"
+  NegInf + PosInf = error "Trying to compute: -oo + +oo"
   PosInf + PosInf = PosInf
   NegInf + NegInf = NegInf
   Val x + Val y = Val (x + y)
   inf + Val y = inf
   Val x + inf = inf
 
-  PosInf * NegInf = NegInf
-  NegInf * PosInf = NegInf
-  PosInf * PosInf = PosInf
-  NegInf * NegInf = PosInf
   Val x * Val y = Val (x * y)
-  Val x * inf = if signum x == 1 then PosInf else NegInf
-  inf * Val y = if signum y == 1 then PosInf else NegInf
+  Val x * inf 
+    | signum (Val x) == 0 = 0
+    | signum (Val x) == 1 = inf
+    | otherwise           = negate inf
+  inf * Val x = Val x * inf
+  inf1 * inf2
+    | signum inf1 == 1 = inf2
+    | otherwise = negate inf2
 
   abs NegInf = PosInf
   abs PosInf = PosInf
@@ -47,6 +49,32 @@ instance Num a => Num (BoundedFractional a) where
   negate NegInf = PosInf
   negate (Val x) = Val (negate x)
 
--- instance Fractional a => Fractional (BoundedFractional a) where
+instance (Fractional a, Eq a) => Fractional (BoundedFloating a) where
+  fromRational x = Val (fromRational x)
 
+  recip PosInf = Val 0
+  recip NegInf = Val 0
+  recip (Val x) = Val (recip x)
+
+instance (Floating a, Eq a) => Floating (BoundedFloating a) where
+  pi = Val pi
+
+  exp PosInf = PosInf
+  exp NegInf = Val 0
+  exp (Val x) = Val (exp x)
+
+  log PosInf = PosInf
+  log NegInf = error "Trying to compute: log(-oo)"
+  log (Val x) = Val (log x)
+
+  sin = error "TODO: not implemented"
+  cos = error "TODO: not implemented"
+  asin = error "TODO: not implemented"
+  acos = error "TODO: not implemented"
+  atan = error "TODO: not implemented"
+  sinh = error "TODO: not implemented"
+  cosh = error "TODO: not implemented"
+  asinh = error "TODO: not implemented"
+  acosh = error "TODO: not implemented"
+  atanh = error "TODO: not implemented"
 

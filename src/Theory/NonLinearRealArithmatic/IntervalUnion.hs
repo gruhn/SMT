@@ -12,6 +12,7 @@ import qualified Theory.NonLinearRealArithmatic.Interval as Interval
 import Theory.NonLinearRealArithmatic.Interval (Interval(..))
 
 newtype IntervalUnion a = IntervalUnion { getIntervals :: [Interval a] }
+  deriving Show
 
 diameter :: (Num a, Ord a) => IntervalUnion a -> a
 diameter = sum . fmap Interval.diameter . getIntervals . reduce
@@ -63,10 +64,9 @@ root union n = error "TODO: extend interval arithmatic to arbitrary integer root
 -- >>> reduce [ 4 :..: 8, 0 :..: 3, 5 :..: 6, 7 :..: 12, 1 :..: 3 ]
 -- [0 :..: 3,4 :..: 12]
 
--- merge overlapping intervals
-
-reduce :: forall a. Ord a => IntervalUnion a -> IntervalUnion a
-reduce = modifyIntervals (go . sortBy (compare `on` lowerBound))
+-- | merge overlapping intervals
+reduce :: forall a. (Ord a, Num a) => IntervalUnion a -> IntervalUnion a
+reduce = modifyIntervals (go . sortBy (compare `on` lowerBound) . filter (not . Interval.isEmpty))
   where
     go :: [Interval a] -> [Interval a]
     go [] = []
@@ -86,7 +86,7 @@ instance (Ord a, Num a) => Num (IntervalUnion a) where
   union1 * union2 = reduce $ IntervalUnion $ do
     interval1 <- getIntervals union1
     interval2 <- getIntervals union2
-    return (interval1 + interval2)
+    return (interval1 * interval2)
 
   fromInteger x = IntervalUnion [fromInteger x]
   negate = modifyIntervals (fmap negate)

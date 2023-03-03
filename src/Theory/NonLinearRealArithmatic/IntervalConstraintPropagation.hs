@@ -27,12 +27,10 @@
 
 -- TODO: Also implement Newton constraction method
 
-module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation () where
+module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation where
 
 import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval 
-import Theory.NonLinearRealArithmatic.Expr ( Expr,  Var )
-import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial(Polynomial), Term(Term), Monomial, exponentOf )
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
 import qualified Data.IntMap as M
@@ -42,11 +40,13 @@ import qualified Control.Monad.State as State
 import Data.Containers.ListUtils ( nubOrd )
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion (IntervalUnion))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
-import Theory.NonLinearRealArithmatic.BoundedFloating
+import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating)
+import Theory.NonLinearRealArithmatic.Expr (Var)
 
 type VarDomains a = M.IntMap (IntervalUnion a)
 
 data ConstraintRelation = StrictLessThan | WeakLessThan | Equals
+  deriving Show
 
 -- | Assuming the expression forms the left-hand-side of the relation, 
 -- while the right-hand-side is always zero, e.g. 
@@ -118,8 +118,7 @@ evalMonomial:: (Bounded a, Num a, Ord a) => VarDomains a -> Monomial -> Interval
 evalMonomial assignment = product . M.intersectionWith IntervalUnion.power assignment
 
 evalTerm :: (Bounded a, Ord a, Num a) => VarDomains a -> Term (IntervalUnion a) -> IntervalUnion a
-evalTerm assignment (Term coeff monomial) = 
-  fromIntegral coeff * evalMonomial assignment monomial
+evalTerm assignment (Term coeff monomial) = coeff * evalMonomial assignment monomial
  
 eval :: (Bounded a, Ord a, Num a) => VarDomains a -> Polynomial (IntervalUnion a) -> IntervalUnion a
 eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
@@ -136,7 +135,7 @@ eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
 -- and evaluate the right-hand-side. It's assumed that the constraint 
 -- has been preprocessed before. Otherwise it's not possible, in general, 
 -- to solve for any variable.
-solveFor :: (Ord a, Num a, Floating a, Bounded a) => Var -> Constraint a -> VarDomains a -> IntervalUnion a
+solveFor :: (Ord a, Num a, Bounded a, Floating a) => Var -> Constraint a -> VarDomains a -> IntervalUnion a
 solveFor var (rel, polynomial) var_domains = 
   let 
     Just (Term coeff monomial, rest_terms) = Polynomial.extractTerm var polynomial
@@ -173,18 +172,16 @@ contractAll constraints initial_domains = foldr accum initial_domains contractio
     accum :: (Var, Constraint a) -> VarDomains a -> VarDomains a
     accum (var, constraint) var_domains = contract var constraint var_domains 
 
-example :: [VarDomains BoundedFractional]
-example = 
-  let 
-    -- 2x - 3y = 0    
-    c1 = (Equals, Polynomial [ Term 2 (M.singleton 1 1), Term (-3) (M.singleton 2 1) ]) 
 
-     -- x^2 - 2y = 
+example :: [VarDomains (BoundedFloating Float)]
+example =
+  let
+    -- 2x - 3y = 0    
+    c1 = (Equals, Polynomial [ Term 2 (M.singleton 1 1), Term (-2) (M.singleton 2 1) ]) 
+     -- x^2 - 2y = 0
     c2 = (Equals, Polynomial [ Term 1 (M.singleton 1 2), Term (-2) (M.singleton 2 1) ]) 
 
-    initial = IntervalUnion [ 1 :..: 10 ]
-
+    initial = IntervalUnion [ -1 :..: 10 ]
     domains0 = M.fromList [(1, initial), (2, initial)]
-
-  in iterate (contractAll [c1,c2]) domains0
-    
+  in 
+    iterate (contractAll [c1,c2]) domains0 

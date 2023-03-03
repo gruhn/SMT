@@ -26,6 +26,16 @@ exponentOf = M.findWithDefault 0
 
 data Term a = Term { getCoeff :: a, getMonomial :: Monomial }
 
+instance Show a => Show (Term a) where
+  show (Term coeff monomial) = show coeff <> monomial_showed
+    where
+      show_var :: (Var,Int) -> String
+      show_var (var, exp) = 
+        "(x" <> show var <> "^" <> show exp <> ")"
+
+      monomial_showed :: String
+      monomial_showed = concatMap show_var (M.toList monomial)
+
 modifyCoeff :: (a -> a) -> Term a -> Term a
 modifyCoeff f (Term coeff monomial) = Term (f coeff) monomial
 
@@ -33,6 +43,10 @@ modifyMonomial :: (Monomial -> Monomial) -> Term a -> Term a
 modifyMonomial f (Term coeff monomial) = Term coeff (f monomial)
 
 newtype Polynomial a = Polynomial { getTerms :: [Term a] }
+
+instance Show a => Show (Polynomial a) where
+  show (Polynomial terms) = 
+    List.intercalate " + " (show <$> terms)
 
 instance (Ord a, Num a) => Num (Polynomial a) where
   (Polynomial p1) + (Polynomial p2) = Polynomial $ combineTerms (p1 <> p2)
