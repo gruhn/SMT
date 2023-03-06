@@ -45,8 +45,9 @@ test-suite test
     type:             exitcode-stdio-1.0 
     main-is:          Test.hs
     other-modules:    GameUnequal
+                    , TestNonLinearRealArithmatic
     build-depends:    base ^>=4.14.3.0
-                    , SAT
+                    , SMT-solver
                     , tasty
                     , tasty-hunit
                     , tasty-quickcheck

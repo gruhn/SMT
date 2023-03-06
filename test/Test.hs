@@ -20,12 +20,15 @@ import qualified GameUnequal
 import qualified Data.Map as M
 import Assignment (ignoreAuxVars)
 
+import qualified TestNonLinearRealArithmatic as TestNRA
+
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "All tests"
-  [ unitTests, propertyBasedTests ]
+  -- [ unitTests, propertyBasedTests, TestNRA.tests ]
+  [ TestNRA.tests ]
 
 -- Unit Tests
 

@@ -111,40 +111,31 @@ partialDerivative var (Polynomial terms) =
 --      3*(x+y)^2 + 2*y + 10 + 5
 --   =  3*x^2 + 6*x*y + 3*y^2 + 2*y + 15*1
 -- 
--- TODO: property test "expression is equivalent to polynomial"
---       property test "all coeffitients are always non-zero"
---       property test "key set of all monomials is the same"
---
 fromExpr :: forall a. (Ord a, Num a) => Expr a -> Polynomial a
-fromExpr = expand
-  where
-    -- Multiply out nested expressions and eliminate subtractions until
-    -- we are left with a big sum, where each summand is composed of a 
-    -- a constant coefficient and a monomial. That leaves potentially 
-    -- many terms that can be summed up and combined into one term. 
-    -- Do that separately with `sum_coeffs`.
-    expand :: Expr a -> Polynomial a
-    expand expr =
-      case expr of
-        Var var -> Polynomial [ Term 1 (M.singleton var 1) ]
-        Const a -> Polynomial [ Term a M.empty ]
+fromExpr expr =
+  -- Multiply out nested expressions and eliminate subtractions until
+  -- we are left with a big sum, where each summand is composed of a 
+  -- a constant coefficient and a monomial.
+  case expr of
+    Var var -> Polynomial [ Term 1 (M.singleton var 1) ]
+    Const a -> Polynomial [ Term a M.empty ]
 
-        UnaryOp (Root _) _ -> error "Roots in user provided expressions not supported"
+    UnaryOp (Root _) _ -> error "Roots in user provided expressions not supported"
 
-        UnaryOp (Exp n) (Const a) -> Polynomial [ Term (a^n) M.empty ]
-        UnaryOp (Exp n) (Var var) -> Polynomial [ Term 1 (M.singleton var n) ]
-        UnaryOp (Exp n) expr -> 
-          if n < 1 then 
-            error "Non-positive exponents not supported"
-          else if n == 1 then
-            expand expr
-          else 
-            expand $ BinaryOp Mul expr (UnaryOp (Exp (n-1)) expr)
+    UnaryOp (Exp n) (Const a) -> Polynomial [ Term (a^n) M.empty ]
+    UnaryOp (Exp n) (Var var) -> Polynomial [ Term 1 (M.singleton var n) ]
+    UnaryOp (Exp n) expr -> 
+      if n < 1 then 
+        error "Non-positive exponents not supported"
+      else if n == 1 then
+        fromExpr expr
+      else 
+        fromExpr $ BinaryOp Mul expr (UnaryOp (Exp (n-1)) expr)
 
-        BinaryOp Add expr1 expr2 -> expand expr1 + expand expr2
-        BinaryOp Sub expr1 expr2 -> expand expr1 - expand expr2
-        BinaryOp Mul expr1 expr2 -> expand expr1 * expand expr2
-        BinaryOp Div _ _ -> error "Division in user provided expressions not supported"
+    BinaryOp Add expr1 expr2 -> fromExpr expr1 + fromExpr expr2
+    BinaryOp Sub expr1 expr2 -> fromExpr expr1 - fromExpr expr2
+    BinaryOp Mul expr1 expr2 -> fromExpr expr1 * fromExpr expr2
+    BinaryOp Div _ _ -> error "Division in user provided expressions not supported"
 
 toExpr :: forall a. (Ord a, Num a) => Polynomial a -> Expr a
 toExpr = foldr1 (BinaryOp Add) . fmap from_term . getTerms

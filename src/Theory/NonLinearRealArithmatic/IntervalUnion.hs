@@ -17,6 +17,9 @@ newtype IntervalUnion a = IntervalUnion { getIntervals :: [Interval a] }
 diameter :: (Num a, Ord a) => IntervalUnion a -> a
 diameter = sum . fmap Interval.diameter . getIntervals . reduce
 
+elem :: Ord a => a -> IntervalUnion a -> Bool
+elem el = any (Interval.elem el) . getIntervals
+
 -- empty :: Num a => IntervalUnion a
 -- empty = 
 

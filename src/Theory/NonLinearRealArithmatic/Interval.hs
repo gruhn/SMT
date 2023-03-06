@@ -32,6 +32,9 @@ greatest = minBound :..: maxBound
 singleton :: a -> Interval a
 singleton a = a :..: a
 
+elem :: Ord a => a -> Interval a -> Bool
+elem el (lb :..: ub) = lb <= el && el <= ub
+
 instance Show a => Show (Interval a) where
   show (lb :..: ub) = show lb <> " :..: " <> show ub
 
