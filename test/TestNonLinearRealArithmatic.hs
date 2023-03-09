@@ -1,5 +1,5 @@
--- module TestNonLinearRealArithmatic (tests, prop_icp_does_not_loose_roots) where
-module TestNonLinearRealArithmatic where
+{-# LANGUAGE FlexibleInstances #-}
+module TestNonLinearRealArithmatic (tests, prop_icp_does_not_loose_roots, mkCWS) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -13,20 +13,21 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty ( NonEmpty, nonEmpty )
 import Data.Maybe (fromJust)
 import Theory.NonLinearRealArithmatic.Interval (Interval((:..:)))
-import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (Equals), preprocess, contractAll, VarDomains)
+import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (Equals), VarDomains, icp)
 import qualified Data.List as NonEmtpy
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion(IntervalUnion))
 import qualified Data.IntMap as M
 import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Control.Monad (guard)
-import Debug.Trace (traceShow, trace)
+import Debug.Trace
+
+-- TODO: property test "expression is equivalent to polynomial"
+--       property test "all coeffitients are always non-zero"
+--       property test "key set of all monomials is the same"
 
 tests :: TestTree
 tests = testGroup "Theory - Non Linear Real Arithmatic"
-  -- TODO: property test "expression is equivalent to polynomial"
-  --       property test "all coeffitients are always non-zero"
-  --       property test "key set of all monomials is the same"
   [ testProperty "No roots are lost through interval constraint propagation" prop_icp_does_not_loose_roots ]
 
 -- | 
@@ -42,10 +43,6 @@ tests = testGroup "Theory - Non Linear Real Arithmatic"
 --
 -- This is useful for testing the root finding algorithms, 
 -- because we can generate random polynomials but with known roots.
-
--- TODO: Currently, variables can appear at most quadratic, 
--- so we have to make sure we are not generating polynomials
--- with larger powers.
 mkPolynomial :: NonEmpty (Var, Float) -> Polynomial (BoundedFloating Float)
 mkPolynomial var_root_pairs = fromExpr expr
   where
@@ -54,26 +51,39 @@ mkPolynomial var_root_pairs = fromExpr expr
 
     expr = foldr1 (BinaryOp Mul) (uncurry factor_from <$> var_root_pairs)
 
-prop_icp_does_not_loose_roots :: (Int, [Float]) -> Bool
-prop_icp_does_not_loose_roots (var_count, roots) = all no_root_lost vars
+newtype ConstraintWithSolution = CWS 
+  { getCWS :: (Constraint (BoundedFloating Float), [(Var, Float)]) }
+    deriving Show
+
+mkCWS :: [Var] -> [Float] -> ConstraintWithSolution
+mkCWS vars roots = CWS (constraint, var_root_pairs)
   where
-    -- TODO: how to guarantee that only non-negative integers are generated?
-    var_count' = var_count `mod` 5
-    roots' = 1 : roots
-    vars = [0 .. var_count']
-    var_root_pairs = zip (vars <> vars) roots'
+    -- TODO: Currently, variables can appear at most quadratic, 
+    -- so we have to make sure we are not generating polynomials
+    -- with larger powers.
+    var_root_pairs = zip (vars <> vars) roots
 
     -- TODO: generate more than one constraint and also inequality constraints.
     constraint = (Equals, mkPolynomial $ NonEmpty.fromList var_root_pairs)
 
-    initial_domain = IntervalUnion [ Val (minimum roots' - 1) :..: Val (maximum roots' + 1) ]
+instance Arbitrary ConstraintWithSolution where
+  arbitrary = do
+    var_count <- chooseInt (0, 10)
+    root_count <- chooseInt (1, 10)
+    roots <- vectorOf root_count arbitrary
+    return $ mkCWS [0 .. var_count] roots
+
+prop_icp_does_not_loose_roots :: ConstraintWithSolution -> Bool
+prop_icp_does_not_loose_roots (CWS (constraint, var_root_pairs)) = all no_root_lost vars
+  where
+    (vars, roots) = unzip var_root_pairs
+
+    initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
     domains0 = M.fromList $ zip vars (repeat initial_domain)
 
-    (domains1, constraints_preprocessed) = preprocess domains0 [ constraint ]
-    
     -- TODO: arbitrarily number of contraction iterations here. What would be more principled?
     --       Also don't contract all contraction condidates. It seems to be too expensive.
-    final_domains = iterate (contractAll constraints_preprocessed) domains1 NonEmtpy.!! 1
+    final_domains = traceShowId $ icp [constraint] domains0 !! 10
 
     no_root_lost :: Var -> Bool
     no_root_lost var = all (`IntervalUnion.elem` domain_of_var) roots_of_var

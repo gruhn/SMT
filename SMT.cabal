@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               SMT-solver
+name:               SMT
 version:            0.1.0.0
 author:             Niklas Gruhn
 maintainer:         niklas@gruhn.me
@@ -40,6 +40,7 @@ library
     hs-source-dirs:   src
     default-language: Haskell2010
     default-extensions: ScopedTypeVariables
+                      , LambdaCase
 
 test-suite test
     type:             exitcode-stdio-1.0 
@@ -47,7 +48,7 @@ test-suite test
     other-modules:    GameUnequal
                     , TestNonLinearRealArithmatic
     build-depends:    base ^>=4.14.3.0
-                    , SMT-solver
+                    , SMT
                     , tasty
                     , tasty-hunit
                     , tasty-quickcheck
