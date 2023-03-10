@@ -8,7 +8,7 @@ import Test.Tasty.QuickCheck
 import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import Theory.NonLinearRealArithmatic.Expr (Expr (BinaryOp, Var, Const), Var, BinaryOp (Mul, Sub))
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
-import Theory.NonLinearRealArithmatic.Polynomial (Polynomial (Polynomial), fromExpr)
+import Theory.NonLinearRealArithmatic.Polynomial (Polynomial, mkPolynomial, fromExpr, Term (Term))
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty ( NonEmpty, nonEmpty )
 import Data.Maybe (fromJust)
@@ -20,16 +20,49 @@ import qualified Data.IntMap as M
 import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Control.Monad (guard)
-
--- TODO: property test "expression is equivalent to polynomial"
---       property test "all coeffitients are always non-zero"
---       property test "key set of all monomials is the same"
+import Data.Containers.ListUtils (nubOrd)
 
 tests :: TestTree
-tests = testGroup "Interval Constraint Propagation"
-  [ testProperty "No roots are lost" prop_no_roots_are_lost 
-  , testProperty "Interval diameters never increase" prop_interval_diameters_never_increase 
+tests = testGroup "Theory - Non Linear Real Arithmatic"
+  [ testGroup "Polynomial"
+      [ testProperty "Coefficients are always non-zero" prop_all_coeffs_non_zero
+      , testProperty "Exponents are alwyas non-zero" prop_exponents_always_non_zero
+      , testProperty "Monomials are pair-wise distinct" prop_unique_monomials
+      ]
+  , testGroup "Interval Constraint Propagation"
+      [ testProperty "No roots are lost" prop_no_roots_are_lost
+      , testProperty "Interval diameters never increase" prop_interval_diameters_never_increase
+      ]
   ]
+
+instance Arbitrary a => Arbitrary (Term a) where
+  arbitrary = do
+    -- TODO: only at most quadratic exponents supported at the moment
+    let var_with_exponent = (,) <$> chooseInt (0,10) <*> chooseInt (1,2)
+
+    coeff <- arbitrary
+    monomial <- M.fromList <$> listOf var_with_exponent
+    return $ Term coeff monomial
+
+instance (Arbitrary a, Num a, Ord a) => Arbitrary (Polynomial a) where
+  arbitrary = mkPolynomial <$> listOf arbitrary
+
+prop_all_coeffs_non_zero :: (Polynomial Int, Polynomial Int) -> Bool
+prop_all_coeffs_non_zero (p1, p2) = 0 `notElem` coeffs
+  where
+    coeffs = fmap Polynomial.getCoeff $ Polynomial.getTerms $ p1 + p2
+
+prop_exponents_always_non_zero :: (Polynomial Int, Polynomial Int) -> Bool
+prop_exponents_always_non_zero (p1, p2) = 0 `notElem` exponents
+  where
+    exponents = do 
+      term <- Polynomial.getTerms (p1 * p2)
+      M.elems $ Polynomial.getMonomial term
+
+prop_unique_monomials :: (Polynomial Int, Polynomial Int) -> Bool
+prop_unique_monomials (p1, p2) = nubOrd monomials == monomials
+  where
+    monomials = Polynomial.getMonomial <$> Polynomial.getTerms (p1 + p2)
 
 -- | 
 -- Make a polynomial from a given list of roots, such as 
@@ -44,15 +77,15 @@ tests = testGroup "Interval Constraint Propagation"
 --
 -- This is useful for testing the root finding algorithms, 
 -- because we can generate random polynomials but with known roots.
-mkPolynomial :: NonEmpty (Var, Float) -> Polynomial (BoundedFloating Float)
-mkPolynomial var_root_pairs = fromExpr expr
+polynomialFromRoots :: NonEmpty (Var, Float) -> Polynomial (BoundedFloating Float)
+polynomialFromRoots var_root_pairs = fromExpr expr
   where
     factor_from :: Var -> Float -> Expr (BoundedFloating Float)
     factor_from var root = BinaryOp Sub (Const $ Val root) (Var var)
 
     expr = foldr1 (BinaryOp Mul) (uncurry factor_from <$> var_root_pairs)
 
-newtype ConstraintWithSolution = CWS 
+newtype ConstraintWithSolution = CWS
   { getCWS :: (Constraint (BoundedFloating Float), [(Var, Float)]) }
     deriving Show
 
@@ -65,7 +98,7 @@ mkCWS vars roots = CWS (constraint, var_root_pairs)
     var_root_pairs = zip (vars <> vars) roots
 
     -- TODO: generate more than one constraint and also inequality constraints.
-    constraint = (Equals, mkPolynomial $ NonEmpty.fromList var_root_pairs)
+    constraint = (Equals, polynomialFromRoots $ NonEmpty.fromList var_root_pairs)
 
 instance Arbitrary ConstraintWithSolution where
   arbitrary = do
@@ -90,14 +123,14 @@ prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost var
       where
         domain_of_var = final_domains M.! var
         roots_of_var = do
-          (var', root) <- var_root_pairs          
+          (var', root) <- var_root_pairs
           guard (var == var')
           return (Val root)
 
 allSubsetsOf :: Ord a => VarDomains a -> VarDomains a -> Bool
 allSubsetsOf domains1 domains2 = and $
   M.mergeWithKey
-    (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2) 
+    (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2)
     (const M.empty)
     (const M.empty)
     domains1
@@ -111,5 +144,5 @@ prop_interval_diameters_never_increase (CWS (constraint, var_root_pairs)) =
     initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
     domains_before = M.fromList $ zip vars (repeat initial_domain)
     domains_after = intervalConstraintPropagation [constraint] domains_before
-  in 
+  in
     domains_after `allSubsetsOf` domains_before

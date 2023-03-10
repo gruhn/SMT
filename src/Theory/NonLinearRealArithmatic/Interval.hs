@@ -9,6 +9,7 @@ import Data.Function (on)
 import Data.List (sortBy)
 
 data Interval a = (:..:) { lowerBound :: a, upperBound :: a }
+  deriving (Eq, Ord)
 
 -- TODO: is this a good operator precedence? It should at least be lower then 6, otherwise
 -- (-3 :..: 4) is read as -(3 :..: 4) == (-4 :..: -3).

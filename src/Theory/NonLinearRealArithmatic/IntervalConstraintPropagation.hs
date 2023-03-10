@@ -33,7 +33,7 @@ module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (VarDomains,
 
 import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
-import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial(Polynomial), Term(Term), Monomial, exponentOf )
+import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial, Term(Term), Monomial, exponentOf, mkPolynomial )
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
 import qualified Data.IntMap as M
 import qualified Data.Map.Lazy as LazyMap
@@ -45,7 +45,6 @@ import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion (IntervalUnio
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import Theory.NonLinearRealArithmatic.Expr (Var)
-import Debug.Trace
 
 type VarDomains a = M.IntMap (IntervalUnion a)
 
@@ -65,10 +64,7 @@ type Constraint a = (ConstraintRelation, Polynomial a)
 type PreprocessState a = (Var, [Constraint a], VarDomains a)
 
 varsIn :: [Constraint a] -> [Var]
-varsIn constraints = nubOrd $ do
-  (_, Polynomial terms) <- constraints
-  Term _ monomial <- terms
-  M.keys monomial
+varsIn = nubOrd . concatMap (Polynomial.varsIn . snd)
 
 -- |
 preprocess :: forall a. (Num a, Ord a, Bounded a) => VarDomains a -> [Constraint a] -> (VarDomains a, [Constraint a])
@@ -89,12 +85,12 @@ preprocess initial_var_domains initial_constraints = (updated_var_domains, updat
         --     h = x^2   <==>   0 = h - x^2
         --
         let new_side_condition :: Constraint a
-            new_side_condition = (Equals, Polynomial [ fresh_term, Term (-coeff) monomial ] )
+            new_side_condition = (Equals, mkPolynomial [ fresh_term, Term (-coeff) monomial ] )
 
         -- Then we initialize the domain of the new variable by evaluating x^2
         -- via interval arithmatic (since h = x^2).
         let fresh_var_domain :: IntervalUnion a
-            fresh_var_domain = eval var_domains (Polynomial [ Term (IntervalUnion.singleton coeff) monomial ])
+            fresh_var_domain = eval var_domains (mkPolynomial [ Term (IntervalUnion.singleton coeff) monomial ])
 
         State.put
           ( fresh_var + 1
@@ -105,9 +101,9 @@ preprocess initial_var_domains initial_constraints = (updated_var_domains, updat
         return fresh_term
 
     preprocess_constraint :: Constraint a -> State (PreprocessState a) (Constraint a)
-    preprocess_constraint (rel, Polynomial terms) = do
-      updated_terms <- mapM preprocess_term terms
-      return (rel, Polynomial updated_terms)
+    preprocess_constraint (rel, polynomial) = do
+      updated_terms <- mapM preprocess_term (Polynomial.getTerms polynomial)
+      return (rel, mkPolynomial updated_terms)
 
     -- Identify the largest used variable ID, so we can generate fresh variables by just incrementing.
     max_var = maximum $ varsIn initial_constraints
@@ -128,7 +124,7 @@ evalTerm :: (Bounded a, Ord a, Num a) => VarDomains a -> Term (IntervalUnion a) 
 evalTerm assignment (Term coeff monomial) = coeff * evalMonomial assignment monomial
 
 eval :: (Bounded a, Ord a, Num a) => VarDomains a -> Polynomial (IntervalUnion a) -> IntervalUnion a
-eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
+eval assignment polynomial = sum (evalTerm assignment <$> Polynomial.getTerms polynomial)
 
 {-|
   Take a constraint such as
@@ -143,14 +139,14 @@ eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
   has been preprocessed before. Otherwise it's not possible, in general, 
   to solve for any variable.
 -}
-solveFor :: (Ord a, Num a, Bounded a, Floating a, Show a) => Var -> Constraint a -> VarDomains a -> (ConstraintRelation, IntervalUnion a)
+solveFor :: (Ord a, Num a, Bounded a, Floating a) => Var -> Constraint a -> VarDomains a -> (ConstraintRelation, IntervalUnion a)
 solveFor var (rel, polynomial) var_domains =
   let
     Just (Term coeff monomial, rest_terms) = Polynomial.extractTerm var polynomial
 
     -- bring all other terms to the right-and-side
     rhs_terms = eval var_domains
-      $ Polynomial (fmap (IntervalUnion.singleton . negate) <$> rest_terms)
+      $ mkPolynomial (fmap (IntervalUnion.singleton . negate) <$> rest_terms)
 
     -- extract remaining coefficients of `var`
     divisor = evalTerm var_domains
@@ -175,7 +171,7 @@ solveFor var (rel, polynomial) var_domains =
     solution
       | is_zero divisor && relation `elem` [LessEquals, Equals, GreaterEquals] = var_domains M.! var
       | is_zero divisor && relation `elem` [LessThan, GreaterThan] = IntervalUnion.empty
-      | otherwise = IntervalUnion.root (traceShow (rhs_terms, divisor) $ rhs_terms / divisor) (exponentOf var monomial)
+      | otherwise = IntervalUnion.root (rhs_terms / divisor) (exponentOf var monomial)
   in
     (relation, solution)
 
@@ -236,6 +232,7 @@ relativeContraction old_domain new_domain
     new_diameter = IntervalUnion.diameter new_domain
 
 {-|
+
   TODO: 
 
   1) ICP does not behave well on linear constraints. 
@@ -254,7 +251,7 @@ relativeContraction old_domain new_domain
 
 -}
 intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
-intervalConstraintPropagation constraints0 domains0 = last $ take 10 $ iterations
+intervalConstraintPropagation constraints0 domains0 = last $ take 10 iterations
   where
     (domains1, constraints1) = preprocess domains0 constraints0
 
@@ -293,7 +290,7 @@ example1 =
     -- x0^2 * x1^2
     terms = [ Polynomial.Term (Val 1.0) $ M.fromList [(0, 2), (1, 2)] ]
 
-    constraint = (Equals, Polynomial terms)
+    constraint = (Equals, mkPolynomial terms)
 
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 
@@ -307,7 +304,7 @@ example2 =
     -- 0.13883655 - x0
     terms = [ Term (-1) (M.fromList [ (0,1) ]), Term 0.13883655 M.empty ]
 
-    constraint = (Equals, Polynomial terms)
+    constraint = (Equals, mkPolynomial terms)
 
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 
@@ -325,7 +322,7 @@ example3 =
       , Term (-3) (M.singleton 1 1)
       , Term 2 M.empty ]
 
-    constraint = (Equals, Polynomial terms)
+    constraint = (Equals, mkPolynomial terms)
 
     dom_x0 = IntervalUnion [ Val (-5) :..: Val 17 ]
     dom_x1 = IntervalUnion [ Val (-5) :..: Val 5 ]
@@ -346,7 +343,7 @@ example4 =
 
     -- roots: -33, -17
 
-    constraint = (Equals, Polynomial terms)
+    constraint = (Equals, mkPolynomial terms)
 
     dom_x = IntervalUnion [ Val (-34) :..: Val (-16) ]
 
@@ -361,7 +358,7 @@ example5 =
     terms = 
       [ Term 1 (M.fromList [(0,1), (1,1)]) ]
 
-    constraint = (Equals, Polynomial terms)
+    constraint = (Equals, mkPolynomial terms)
 
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 

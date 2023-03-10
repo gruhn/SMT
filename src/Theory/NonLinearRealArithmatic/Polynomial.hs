@@ -1,11 +1,19 @@
--- TODO: make sure polynomials are always normalized 
---    
---   * filter out 0 coeffitions
---   * join terms with same monomial
---   * no zero exponents
---   * more?
---
-module Theory.NonLinearRealArithmatic.Polynomial where
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant $" #-}
+module Theory.NonLinearRealArithmatic.Polynomial
+  ( Polynomial
+  , getTerms
+  , Monomial
+  , mkPolynomial
+  , exponentOf
+  , Term(..)
+  , modifyCoeff
+  , modifyMonomial
+  , varsIn
+  , isLinear
+  , extractTerm
+  , fromExpr
+  ) where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
 import qualified Data.List as L
@@ -44,18 +52,57 @@ modifyMonomial f (Term coeff monomial) = Term coeff (f monomial)
 
 newtype Polynomial a = Polynomial { getTerms :: [Term a] }
 
+{-|
+  In a normalized polynomial:
+
+  * All terms have non-zero coefficients. A zero coefficient is equivalent to simply
+    not storing the term.
+
+  * All exponents are non-zero. Because `x^0 = 1` we can simply not store variables 
+    with zero exponent.
+
+  * Terms have pair-wise distinct monomials. Two terms with the same monomials, 
+    like `3xy` and `2yx` and always be combined to one term `5xy`.
+
+-}
+normalize :: (Num a, Ord a) => Polynomial a -> Polynomial a
+normalize (Polynomial terms) = 
+  let
+    reject_zero_coeffs = filter ((/= 0) . getCoeff)
+    reject_zero_exponents = fmap (modifyMonomial (M.filter (/= 0)))
+  in
+    Polynomial
+      $ combineTerms
+      $ reject_zero_exponents 
+      $ reject_zero_coeffs 
+      $ terms
+
+{-| 
+  Constructs a normalized polynomial from a list of terms.
+
+  For the sake of space and time complexity, it's favorable to keep polynomials normalized. 
+  Some operations, like adding two normalized polynomials, can yield un-normalized polynomials. 
+  For example, adding -2x and 2x, yields 0x. 
+
+  The `Polynomial` module restricts access to the default constructor, to ensure that un-normalized
+  polynomials can not be constructed and any potentially de-normalizing operation is immediately 
+  followed by a re-normalization.
+-}
+mkPolynomial :: (Num a, Ord a) => [Term a] -> Polynomial a
+mkPolynomial = normalize . Polynomial
+
 instance Show a => Show (Polynomial a) where
   show (Polynomial terms) = 
     List.intercalate " + " (show <$> terms)
 
 instance (Ord a, Num a) => Num (Polynomial a) where
-  (Polynomial p1) + (Polynomial p2) = Polynomial $ combineTerms (p1 <> p2)
+  (Polynomial p1) + (Polynomial p2) = mkPolynomial $ p1 <> p2
   
-  (Polynomial p1) * (Polynomial p2) = Polynomial $ do
+  (Polynomial p1) * (Polynomial p2) = mkPolynomial $ do
     Term coeff1 exps1 <- p1
     Term coeff2 exps2 <- p2
     -- Sum up exponents of same variables.
-    return $ Term (coeff1*coeff2) $ M.unionWith (+) exps1 exps2
+    return $ Term (coeff1*coeff2)  $ M.unionWith (+) exps1 exps2
 
   abs (Polynomial p) = Polynomial (modifyCoeff abs <$> p)
 
@@ -63,11 +110,12 @@ instance (Ord a, Num a) => Num (Polynomial a) where
 
   signum (Polynomial p) = Polynomial (modifyCoeff signum <$> p)
 
-  fromInteger i = Polynomial [Term (fromInteger i) M.empty]
+  fromInteger i = mkPolynomial [Term (fromInteger i) M.empty]
   
 instance Functor Term where
   fmap f (Term coeff monomial) = Term (f coeff) monomial
 
+-- TODO: this might violate normalization
 instance Functor Polynomial where
   fmap f (Polynomial terms) = Polynomial (fmap (fmap f) terms)
   
@@ -186,7 +234,7 @@ containsVar :: Var -> Term a -> Bool
 containsVar var (Term _ monomial) = 
   case M.lookup var monomial of
     Nothing -> False
-    Just 0  -> False -- TODO: make sure this never occurs
+    Just 0  -> False -- this should never occurs for normalized polynomials
     Just _  -> True
   
 extractTerm :: Var -> Polynomial a -> Maybe (Term a, [Term a])
