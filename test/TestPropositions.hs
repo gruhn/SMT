@@ -8,7 +8,6 @@ import Data.String (fromString)
 import Expression
 import CNF 
 import qualified Algorithm.LinearResolution as LR
-import Debug.Trace (trace)
 import qualified Algorithm.DPLL as DPLL
 import qualified Algorithm.CDCL2 as CDCL
 import qualified Data.Set as S

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
-module TestNonLinearRealArithmatic (tests, prop_icp_does_not_loose_roots, mkCWS) where
+module TestNonLinearRealArithmatic (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -8,27 +8,28 @@ import Test.Tasty.QuickCheck
 import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import Theory.NonLinearRealArithmatic.Expr (Expr (BinaryOp, Var, Const), Var, BinaryOp (Mul, Sub))
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
-import Theory.NonLinearRealArithmatic.Polynomial (Polynomial, fromExpr)
+import Theory.NonLinearRealArithmatic.Polynomial (Polynomial (Polynomial), fromExpr)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty ( NonEmpty, nonEmpty )
 import Data.Maybe (fromJust)
 import Theory.NonLinearRealArithmatic.Interval (Interval((:..:)))
-import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (Equals), VarDomains, icp)
+import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (Equals), VarDomains, intervalConstraintPropagation)
 import qualified Data.List as NonEmtpy
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion(IntervalUnion))
 import qualified Data.IntMap as M
 import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Control.Monad (guard)
-import Debug.Trace
 
 -- TODO: property test "expression is equivalent to polynomial"
 --       property test "all coeffitients are always non-zero"
 --       property test "key set of all monomials is the same"
 
 tests :: TestTree
-tests = testGroup "Theory - Non Linear Real Arithmatic"
-  [ testProperty "No roots are lost through interval constraint propagation" prop_icp_does_not_loose_roots ]
+tests = testGroup "Interval Constraint Propagation"
+  [ testProperty "No roots are lost" prop_no_roots_are_lost 
+  , testProperty "Interval diameters never increase" prop_interval_diameters_never_increase 
+  ]
 
 -- | 
 -- Make a polynomial from a given list of roots, such as 
@@ -73,17 +74,15 @@ instance Arbitrary ConstraintWithSolution where
     roots <- vectorOf root_count arbitrary
     return $ mkCWS [0 .. var_count] roots
 
-prop_icp_does_not_loose_roots :: ConstraintWithSolution -> Bool
-prop_icp_does_not_loose_roots (CWS (constraint, var_root_pairs)) = all no_root_lost vars
+prop_no_roots_are_lost :: ConstraintWithSolution -> Bool
+prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost vars
   where
     (vars, roots) = unzip var_root_pairs
 
     initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
     domains0 = M.fromList $ zip vars (repeat initial_domain)
 
-    -- TODO: arbitrarily number of contraction iterations here. What would be more principled?
-    --       Also don't contract all contraction condidates. It seems to be too expensive.
-    final_domains = traceShowId $ icp [constraint] domains0 !! 10
+    final_domains = intervalConstraintPropagation [constraint] domains0
 
     no_root_lost :: Var -> Bool
     no_root_lost var = all (`IntervalUnion.elem` domain_of_var) roots_of_var
@@ -93,3 +92,24 @@ prop_icp_does_not_loose_roots (CWS (constraint, var_root_pairs)) = all no_root_l
           (var', root) <- var_root_pairs          
           guard (var == var')
           return (Val root)
+
+allSubsetsOf :: Ord a => VarDomains a -> VarDomains a -> Bool
+allSubsetsOf domains1 domains2 = and $
+  M.mergeWithKey
+    (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2) 
+    (const M.empty)
+    (const M.empty)
+    domains1
+    domains2
+
+prop_interval_diameters_never_increase :: ConstraintWithSolution -> Bool
+prop_interval_diameters_never_increase (CWS (constraint, var_root_pairs)) =
+  let
+    (vars, roots) = unzip var_root_pairs
+
+    initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
+    domains_before = M.fromList $ zip vars (repeat initial_domain)
+    domains_after = intervalConstraintPropagation [constraint] domains_before
+  in 
+    domains_after `allSubsetsOf` domains_before
+

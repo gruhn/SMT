@@ -35,6 +35,10 @@ singleton a = a :..: a
 elem :: Ord a => a -> Interval a -> Bool
 elem el (lb :..: ub) = lb <= el && el <= ub
 
+isSubsetOf :: Ord a => Interval a -> Interval a -> Bool
+isSubsetOf (lb1 :..: ub1) (lb2 :..: ub2) = 
+  lb2 <= lb1 && ub1 <= ub2
+
 instance Show a => Show (Interval a) where
   show (lb :..: ub) = show lb <> " :..: " <> show ub
 

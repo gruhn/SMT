@@ -29,7 +29,7 @@
   TODO: Also implement Newton constraction method
 
 -}
-module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (VarDomains, Constraint, ConstraintRelation(..), icp) where
+module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (VarDomains, Constraint, ConstraintRelation(..), intervalConstraintPropagation) where
 
 import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
@@ -43,8 +43,9 @@ import qualified Control.Monad.State as State
 import Data.Containers.ListUtils ( nubOrd )
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion (IntervalUnion))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
-import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating)
+import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import Theory.NonLinearRealArithmatic.Expr (Var)
+import Debug.Trace
 
 type VarDomains a = M.IntMap (IntervalUnion a)
 
@@ -221,37 +222,91 @@ contractWith (constraint, var) var_domains = new_domain
       GreaterEquals -> error "TODO: not implemented yet"
 
 relativeContraction :: (Num a, Ord a, Fractional a) => IntervalUnion a -> IntervalUnion a -> a
-relativeContraction old_domain new_domain = (old_diameter - new_diameter) / old_diameter
-  where
+relativeContraction old_domain new_domain = 
+  let
     old_diameter = IntervalUnion.diameter old_domain
     new_diameter = IntervalUnion.diameter new_domain
+  in
+    if old_diameter == 0 then
+      0
+    else 
+      (old_diameter - new_diameter) / old_diameter
 
 {-|
-  TODO: ICP does not behave well on linear constraints. 
-        Partition constraints into linear and non-linear,
-        and solve the linear constraints with simplex.
+  TODO: 
+
+  1) ICP does not behave well on linear constraints. 
+     Partition constraints into linear and non-linear,
+     and solve the linear constraints with simplex.
+
+  2) splitting intervals can help with contraction, if 
+     the interval contains multiple roots, so split if
+     this can be detected
+
 -}
-icp :: forall a. (Num a, Ord a, Bounded a, Floating a) => [Constraint a] -> VarDomains a -> [VarDomains a]
-icp constraints0 domains0 = State.evalState (step domains1) contraction_candidates 
+intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
+intervalConstraintPropagation constraints0 domains0 = State.evalState (go domains1) contraction_candidates 
   where
     (domains1, constraints1) = preprocess domains0 constraints0
 
+    -- TODO: very magic number without theoretical or empirical basis
+    initial_weight = 0.1
+
     contraction_candidates :: WeightedContractionCandidates a
-    contraction_candidates = LazyMap.singleton 0.1 $ do
+    contraction_candidates = LazyMap.singleton initial_weight $ do
       constraint <- constraints1
       var <- varsIn [ constraint ]
       return (constraint, var)
 
-    step :: VarDomains a -> State (WeightedContractionCandidates a) [VarDomains a]
-    step domains = do
+    go :: VarDomains a -> State (WeightedContractionCandidates a) (VarDomains a)
+    go domains = do
       (old_weight, (constraint, var)) <- chooseContractionCandidate
 
       let old_domain = domains M.! var
           new_domain = contractWith (constraint, var) domains
-          new_weight = relativeContraction old_domain new_domain
+          new_weight = traceShowId $ relativeContraction old_domain new_domain
 
       State.modify (LazyMap.insertWith (<>) new_weight [(constraint, var)])
 
-      ds <- step (M.insert var new_domain domains)
-      return $ domains : ds
+        -- If variable domain was contracted to an empty interval, it shows that the 
+        -- constraints are unsatisfiable. 
+      let unsat = IntervalUnion.isEmpty new_domain
 
+      -- If the relative contraction is smaller than the initial weight, we assume
+      -- convergence has slowed down and we terminate.
+      let slow_converge = new_weight < initial_weight
+          
+      if unsat || slow_converge then
+        return (M.insert var new_domain domains)
+      else
+        go (M.insert var new_domain domains)
+
+
+example1 =
+  let
+    -- x0^2 * x1^2
+    terms = [ Polynomial.Term (Val 1.0) $ M.fromList [(0, 2), (1, 2)] ]
+
+    constraint = (Equals, Polynomial terms)
+
+    dom = IntervalUnion [ Val (-1) :..: Val 1 ]
+
+    domains_before = M.fromList [ (0, dom) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after
+
+
+example2 = 
+  let
+    -- 0.13883655 - x0
+    terms = [ Term (-1) (M.fromList [ (0,1) ]), Term 0.13883655 M.empty ]
+
+    constraint = (Equals, Polynomial terms)
+
+    dom = IntervalUnion [ Val (-1) :..: Val 1 ]
+
+    domains_before = M.fromList [ (0, dom) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after

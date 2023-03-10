@@ -1,7 +1,12 @@
 module Theory.NonLinearRealArithmatic.BoundedFloating where
 
 data BoundedFloating a = PosInf | NegInf | Val a
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show a => Show (BoundedFloating a) where
+  show PosInf = "+Inf"
+  show NegInf = "-Inf"
+  show (Val a) = show a
 
 instance Ord a => Ord (BoundedFloating a) where
   _ <= PosInf = True

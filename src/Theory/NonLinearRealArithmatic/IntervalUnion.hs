@@ -1,11 +1,6 @@
-
 module Theory.NonLinearRealArithmatic.IntervalUnion where
 
--- TODO: extend to multivariate intervals
-
 import qualified Data.IntMap as M
-import qualified Data.Vector as V
-import Data.Vector (Vector)
 import Data.Function (on)
 import Data.List (sortBy)
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
@@ -20,14 +15,12 @@ diameter = sum . fmap Interval.diameter . getIntervals . reduce
 elem :: Ord a => a -> IntervalUnion a -> Bool
 elem el = any (Interval.elem el) . getIntervals
 
--- empty :: Num a => IntervalUnion a
--- empty = 
+isSubsetOf :: Ord a => IntervalUnion a -> IntervalUnion a -> Bool
+isSubsetOf (IntervalUnion intervals1) (IntervalUnion intervals2) =
+  all (\int -> any (int `Interval.isSubsetOf`) intervals2) intervals1
 
--- isEmpty :: (Ord a, Num a) => Interval a -> Bool
--- isEmpty int = diameter int < 0
-
--- greatest :: Bounded a => Interval a 
--- greatest = minBound :..: maxBound
+isEmpty :: (Ord a, Num a) => IntervalUnion a -> Bool
+isEmpty = all Interval.isEmpty . getIntervals
 
 singleton :: a -> IntervalUnion a
 singleton a = IntervalUnion [Interval.singleton a]
