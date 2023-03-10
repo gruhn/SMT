@@ -227,10 +227,10 @@ relativeContraction old_domain new_domain =
     old_diameter = IntervalUnion.diameter old_domain
     new_diameter = IntervalUnion.diameter new_domain
   in
-    if old_diameter == 0 then
-      0
-    else 
+    if old_diameter /= 0 && old_diameter /= -0 then
       (old_diameter - new_diameter) / old_diameter
+    else 
+      0
 
 {-|
   TODO: 
@@ -243,22 +243,24 @@ relativeContraction old_domain new_domain =
      the interval contains multiple roots, so split if
      this can be detected
 
+  3) Terminate based on some measure of convergence slow down
+     instead of just doing a fixed number of iterations.
+
 -}
 intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
-intervalConstraintPropagation constraints0 domains0 = State.evalState (go domains1) contraction_candidates 
+intervalConstraintPropagation constraints0 domains0 = last $ take 10 $ iterations
   where
     (domains1, constraints1) = preprocess domains0 constraints0
 
-    -- TODO: very magic number without theoretical or empirical basis
-    initial_weight = 0.1
-
     contraction_candidates :: WeightedContractionCandidates a
-    contraction_candidates = LazyMap.singleton initial_weight $ do
+    contraction_candidates = LazyMap.singleton 0.1 $ do
       constraint <- constraints1
       var <- varsIn [ constraint ]
       return (constraint, var)
 
-    go :: VarDomains a -> State (WeightedContractionCandidates a) (VarDomains a)
+    iterations = State.evalState (go domains1) contraction_candidates 
+
+    go :: VarDomains a -> State (WeightedContractionCandidates a) [VarDomains a]
     go domains = do
       (old_weight, (constraint, var)) <- chooseContractionCandidate
 
@@ -268,19 +270,17 @@ intervalConstraintPropagation constraints0 domains0 = State.evalState (go domain
 
       State.modify (LazyMap.insertWith (<>) new_weight [(constraint, var)])
 
-        -- If variable domain was contracted to an empty interval, it shows that the 
-        -- constraints are unsatisfiable. 
-      let unsat = IntervalUnion.isEmpty new_domain
-
-      -- If the relative contraction is smaller than the initial weight, we assume
-      -- convergence has slowed down and we terminate.
-      let slow_converge = new_weight < initial_weight
+      let domains' = M.insert var new_domain domains
           
-      if unsat || slow_converge then
-        return (M.insert var new_domain domains)
+      -- If variable domain was contracted to an empty interval, it shows that the 
+      -- constraints are unsatisfiable. 
+      if IntervalUnion.isEmpty new_domain then
+        return [ domains' ]
       else
-        go (M.insert var new_domain domains)
+        (domains :) <$> go domains'
 
+
+--------------------------------------------------------
 
 example1 =
   let
@@ -291,11 +291,10 @@ example1 =
 
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 
-    domains_before = M.fromList [ (0, dom) ]
+    domains_before = M.fromList [ (0, dom), (1, dom) ]
     domains_after = intervalConstraintPropagation [ constraint ] domains_before
   in 
     domains_after
-
 
 example2 = 
   let
@@ -307,6 +306,25 @@ example2 =
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 
     domains_before = M.fromList [ (0, dom) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after
+
+example3 = 
+  let
+    -- -x0 + 2x1^2 - 3x1 + 2
+    terms = 
+      [ Term (-1) (M.singleton 0 1)
+      , Term 2 (M.singleton 1 2)
+      , Term (-3) (M.singleton 1 1)
+      , Term 2 M.empty ]
+
+    constraint = (Equals, Polynomial terms)
+
+    dom_x0 = IntervalUnion [ Val (-5) :..: Val 17 ]
+    dom_x1 = IntervalUnion [ Val (-5) :..: Val 5 ]
+
+    domains_before = M.fromList [ (0, dom_x0), (1, dom_x1) ]
     domains_after = intervalConstraintPropagation [ constraint ] domains_before
   in 
     domains_after

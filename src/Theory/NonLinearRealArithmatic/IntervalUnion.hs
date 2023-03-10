@@ -7,7 +7,9 @@ import qualified Theory.NonLinearRealArithmatic.Interval as Interval
 import Theory.NonLinearRealArithmatic.Interval (Interval(..))
 
 newtype IntervalUnion a = IntervalUnion { getIntervals :: [Interval a] }
-  deriving Show
+
+instance Show a => Show (IntervalUnion a) where
+  show = show . getIntervals
 
 diameter :: (Num a, Ord a) => IntervalUnion a -> a
 diameter = sum . fmap Interval.diameter . getIntervals . reduce
