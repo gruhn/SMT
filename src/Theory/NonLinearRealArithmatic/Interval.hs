@@ -17,14 +17,14 @@ infixr 5 :..:
 -- >>> diameter $ (-5) :..: 10
 -- 15
 
-diameter :: Num a => Interval a -> a
-diameter (lb :..: ub) = ub - lb
+diameter :: (Num a, Ord a) => Interval a -> a
+diameter (lb :..: ub) = max (ub - lb) 0
 
 empty :: Num a => Interval a
 empty = 1 :..: 0
 
-isEmpty :: (Ord a, Num a) => Interval a -> Bool
-isEmpty int = diameter int < 0
+isEmpty :: (Ord a) => Interval a -> Bool
+isEmpty (lb :..: ub) = lb > ub
 
 greatest :: Bounded a => Interval a 
 greatest = minBound :..: maxBound

@@ -24,6 +24,9 @@ isSubsetOf (IntervalUnion intervals1) (IntervalUnion intervals2) =
 isEmpty :: (Ord a, Num a) => IntervalUnion a -> Bool
 isEmpty = all Interval.isEmpty . getIntervals
 
+empty :: IntervalUnion a
+empty = IntervalUnion []
+
 singleton :: a -> IntervalUnion a
 singleton a = IntervalUnion [Interval.singleton a]
 
@@ -93,9 +96,13 @@ instance (Ord a, Num a) => Num (IntervalUnion a) where
 
 reciprocal :: (Ord a, Bounded a, Fractional a) => Interval a -> [Interval a]
 reciprocal (lb :..: ub) 
-  | ub < lb          = [ ]
-  | 0 < lb || ub < 0 = [ recip ub :..: recip lb ]
-  | otherwise        = [ minBound :..: recip lb, recip ub :..: maxBound ]
+  | lb == 0  && ub == 0  = [ ]                                                 -- 1 / (0 :..: 0)    = [ ]
+  | lb == 0  && 0 < ub   = [ recip ub :..: maxBound ]                          -- 1 / (0 :..: 5)    = [ 1/5 :..: +Inf ]
+  | lb < 0   && ub == 0  = [ minBound :..: recip lb ]                          -- 1 / (-5 :..: 0)   = [ -Inf :..: -1/5 ]
+  | lb < 0   && 0 < ub   = [ minBound :..: recip lb, recip ub :..: maxBound ]  -- 1 / (-5 :..: 5)   = [ -Inf :..: -1/5, 1/5 :..: Inf ]
+  | 0 < lb   && lb <= ub = [ recip ub :..: recip lb ]                          -- 1 / (5 :..: 10)   = [ 1/10 :..: 1/5 ]
+  | lb <= ub && ub < 0   = [ recip ub :..: recip lb ]                          -- 1 / (-10 :..: -5) = [ -1/5 :..: -1/10 ]
+  | otherwise            = [ ]                                                 -- 1 / (1 :..: 0)    = []
 
 instance (Ord a, Bounded a, Fractional a) => Fractional (IntervalUnion a) where
   fromRational x = IntervalUnion [ fromRational x :..: fromRational x ]

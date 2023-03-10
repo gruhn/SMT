@@ -50,7 +50,7 @@ import Debug.Trace
 type VarDomains a = M.IntMap (IntervalUnion a)
 
 data ConstraintRelation = LessThan | LessEquals | Equals | GreaterEquals | GreaterThan
-  deriving Show
+  deriving (Eq, Show)
 
 {-| 
 
@@ -133,17 +133,17 @@ eval assignment (Polynomial terms) = sum (evalTerm assignment <$> terms)
 {-|
   Take a constraint such as
    
-    x^2 + 3y + 10 < 0 
+    x^2 - 3y + 10 < 0 
 
-  Bring eveything, except one variable, to one side:
+  Bring eveything to one side, except one the variable that we solve for, and flip the constraint relation if necessary:
 
-    y < -(x^2 + 10) / 3
+    y > (x^2 + 10) / 3
 
   and evaluate the right-hand-side. It's assumed that the constraint 
   has been preprocessed before. Otherwise it's not possible, in general, 
   to solve for any variable.
 -}
-solveFor :: (Ord a, Num a, Bounded a, Floating a) => Var -> Constraint a -> VarDomains a -> (ConstraintRelation, IntervalUnion a)
+solveFor :: (Ord a, Num a, Bounded a, Floating a, Show a) => Var -> Constraint a -> VarDomains a -> (ConstraintRelation, IntervalUnion a)
 solveFor var (rel, polynomial) var_domains =
   let
     Just (Term coeff monomial, rest_terms) = Polynomial.extractTerm var polynomial
@@ -169,7 +169,13 @@ solveFor var (rel, polynomial) var_domains =
       | signum coeff == -1 = flip_relation rel
       | otherwise          = rel
 
-    solution = IntervalUnion.root (rhs_terms / divisor) (exponentOf var monomial)
+    is_zero (IntervalUnion [ 0 :..: 0 ]) = True
+    is_zero _ = False
+
+    solution
+      | is_zero divisor && relation `elem` [LessEquals, Equals, GreaterEquals] = var_domains M.! var
+      | is_zero divisor && relation `elem` [LessThan, GreaterThan] = IntervalUnion.empty
+      | otherwise = IntervalUnion.root (traceShow (rhs_terms, divisor) $ rhs_terms / divisor) (exponentOf var monomial)
   in
     (relation, solution)
 
@@ -208,7 +214,7 @@ chooseContractionCandidate = do
       -- Although we extract them above, they must be put back into the Map with updated weights.
       error "no contraction candidates"
 
-contractWith :: (Num a, Ord a, Floating a, Bounded a) => ContractionCandidate a -> VarDomains a -> IntervalUnion a
+contractWith :: (Num a, Ord a, Floating a, Bounded a, Show a) => ContractionCandidate a -> VarDomains a -> IntervalUnion a
 contractWith (constraint, var) var_domains = new_domain
   where
     (relation, solution) = solveFor var constraint var_domains
@@ -222,15 +228,12 @@ contractWith (constraint, var) var_domains = new_domain
       GreaterEquals -> error "TODO: not implemented yet"
 
 relativeContraction :: (Num a, Ord a, Fractional a) => IntervalUnion a -> IntervalUnion a -> a
-relativeContraction old_domain new_domain = 
-  let
+relativeContraction old_domain new_domain
+  | old_diameter == 0 = 0
+  | otherwise         = (old_diameter - new_diameter) / old_diameter
+  where
     old_diameter = IntervalUnion.diameter old_domain
     new_diameter = IntervalUnion.diameter new_domain
-  in
-    if old_diameter /= 0 && old_diameter /= -0 then
-      (old_diameter - new_diameter) / old_diameter
-    else 
-      0
 
 {-|
   TODO: 
@@ -243,8 +246,11 @@ relativeContraction old_domain new_domain =
      the interval contains multiple roots, so split if
      this can be detected
 
-  3) Terminate based on some measure of convergence slow down
+  3) Terminate based on some measure of slow down of convergence
      instead of just doing a fixed number of iterations.
+
+  4) Initial weight of 0.1 is a magic number. Pick something  
+     more principled.
 
 -}
 intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
@@ -266,7 +272,7 @@ intervalConstraintPropagation constraints0 domains0 = last $ take 10 $ iteration
 
       let old_domain = domains M.! var
           new_domain = contractWith (constraint, var) domains
-          new_weight = traceShowId $ relativeContraction old_domain new_domain
+          new_weight = relativeContraction old_domain new_domain
 
       State.modify (LazyMap.insertWith (<>) new_weight [(constraint, var)])
 
@@ -325,6 +331,41 @@ example3 =
     dom_x1 = IntervalUnion [ Val (-5) :..: Val 5 ]
 
     domains_before = M.fromList [ (0, dom_x0), (1, dom_x1) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after
+
+example4 =
+  let
+    -- 17x + 33x + x^2 + 561
+    terms = 
+      [ Term 17 (M.singleton 0 1)
+      , Term 33 (M.singleton 0 1)
+      , Term 1 (M.singleton 0 2)
+      , Term 561 M.empty ]
+
+    -- roots: -33, -17
+
+    constraint = (Equals, Polynomial terms)
+
+    dom_x = IntervalUnion [ Val (-34) :..: Val (-16) ]
+
+    domains_before = M.fromList [ (0, dom_x) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after
+
+example5 =
+  let
+    -- x * y = 0
+    terms = 
+      [ Term 1 (M.fromList [(0,1), (1,1)]) ]
+
+    constraint = (Equals, Polynomial terms)
+
+    dom = IntervalUnion [ Val (-1) :..: Val 1 ]
+
+    domains_before = M.fromList [ (0, dom), (1, dom) ]
     domains_after = intervalConstraintPropagation [ constraint ] domains_before
   in 
     domains_after

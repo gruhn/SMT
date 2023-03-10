@@ -71,8 +71,9 @@ instance Arbitrary ConstraintWithSolution where
   arbitrary = do
     var_count <- chooseInt (0, 10)
     root_count <- chooseInt (1, 10)
-    roots <- vectorOf root_count arbitrary
-    return $ mkCWS [0 .. var_count] roots
+    -- only generate integer valued floats as roots to reduce numeric issues
+    roots <- vectorOf root_count arbitrary :: Gen [Int]
+    return $ mkCWS [0 .. var_count] (fromIntegral <$> roots)
 
 prop_no_roots_are_lost :: ConstraintWithSolution -> Bool
 prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost vars
@@ -112,4 +113,3 @@ prop_interval_diameters_never_increase (CWS (constraint, var_root_pairs)) =
     domains_after = intervalConstraintPropagation [constraint] domains_before
   in 
     domains_after `allSubsetsOf` domains_before
-
