@@ -45,11 +45,11 @@ findDominatingDirection terms = undefined
 -- |
 -- Returns True iff the polynomial evaluates to something positive under 
 -- the given variable assignment.
-isPositiveSolution :: (Num a, Ord a) => Polynomial a -> IntMap a -> Bool
+isPositiveSolution :: (Num a, Ord a, Assignable a) => Polynomial a -> IntMap a -> Bool
 isPositiveSolution polynomial solution = eval solution polynomial > 0
 
 -- |
-positiveSolution :: (Num a, Ord a) => Polynomial a -> Maybe (IntMap a)
+positiveSolution :: (Num a, Ord a, Assignable a) => Polynomial a -> Maybe (IntMap a)
 positiveSolution polynomial = do 
   normal_vector <- findDominatingDirection polynomial
   
@@ -73,17 +73,14 @@ positiveSolution polynomial = do
 -- |
 -- Returns True if the polynomial evaluates to 0 under the given 
 -- variable assignment.
-isSolution :: (Num a, Ord a) => Polynomial a -> IntMap a -> Bool
+isSolution :: (Num a, Ord a, Assignable a) => Polynomial a -> IntMap a -> Bool
 isSolution polynomial solution = eval solution polynomial == 0
   
 {-| 
 -}
 subtropical :: forall a. (Ord a, Assignable a) => Polynomial a -> Maybe (Assignment a)
-subtropical polynomial
-  | eval one polynomial < 0 = go one polynomial
-  | eval one polynomial > 0 = go one (negate polynomial)
-  | otherwise = Just one
-  where
+subtropical polynomial = 
+  let
     -- solution that maps all variables to one
     one :: Assignment a
     one = M.fromList $ zip (varsIn polynomial) (repeat 1)
@@ -100,4 +97,9 @@ subtropical polynomial
         $ M.unionWith (+) neg_sol 
         $ M.map (* t) 
         $ M.unionWith (-) pos_sol neg_sol
+  in
+    case eval one polynomial `compare` 0 of
+      LT -> go one polynomial
+      GT -> go one (negate polynomial)
+      EQ -> Just one
       
