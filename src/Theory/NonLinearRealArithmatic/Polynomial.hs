@@ -14,6 +14,8 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , extractTerm
   , fromExpr
   , map
+  , Assignable(..)
+  , Assignment
   ) where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
@@ -250,3 +252,15 @@ extractTerm var (Polynomial terms) = go [] terms
     go init (term : tail)
       | containsVar var term = Just (term, reverse init <> tail)
       | otherwise            = go (term : init) tail
+
+type Assignment a = IntMap a
+
+class Num a => Assignable a where
+  evalMonomial :: Assignment a -> Monomial -> a
+  evalMonomial assignment = product . M.intersectionWith (^) assignment
+
+  evalTerm :: Assignment a -> Term a -> a
+  evalTerm assignment (Term coeff monomial) = coeff * evalMonomial assignment monomial
+
+  eval :: Assignment a -> Polynomial a -> a
+  eval assignment polynomial = sum (evalTerm assignment <$> getTerms polynomial)

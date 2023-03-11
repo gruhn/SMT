@@ -29,17 +29,11 @@
   TODO: Also implement Newton constraction method
 
 -}
-module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation 
-  ( VarDomains
-  , Constraint
-  , ConstraintRelation(..)
-  , intervalConstraintPropagation
-  , varsIn
-  ) where
+module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation  ( intervalConstraintPropagation ) where
 
 import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
-import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial, Term(Term), Monomial, exponentOf, mkPolynomial )
+import Theory.NonLinearRealArithmatic.Polynomial ( Polynomial, Term(Term), Monomial, exponentOf, mkPolynomial, Assignment, Assignable (eval, evalTerm) )
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
 import qualified Data.IntMap as M
 import qualified Data.Map.Lazy as LazyMap
@@ -51,29 +45,12 @@ import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion (IntervalUnio
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import Theory.NonLinearRealArithmatic.Expr (Var)
+import Theory.NonLinearRealArithmatic.Constraint (Constraint, ConstraintRelation (..), varsIn)
 
-type VarDomains a = M.IntMap (IntervalUnion a)
-
-data ConstraintRelation = LessThan | LessEquals | Equals | GreaterEquals | GreaterThan
-  deriving (Eq, Show)
-
-{-| 
-
-  Assuming the expression forms the left-hand-side of the relation, 
-  while the right-hand-side is always zero, e.g. 
-   
-    x + 3*y - 10 <= 0
-
--}
-type Constraint a = (ConstraintRelation, Polynomial a)
-
-type PreprocessState a = (Var, [Constraint a], VarDomains a)
-
-varsIn :: [Constraint a] -> [Var]
-varsIn = nubOrd . concatMap (Polynomial.varsIn . snd)
+type PreprocessState a = (Var, [Constraint a], Assignment (IntervalUnion a))
 
 -- |
-preprocess :: forall a. (Num a, Ord a, Bounded a) => VarDomains a -> [Constraint a] -> (VarDomains a, [Constraint a])
+preprocess :: forall a. (Num a, Ord a, Bounded a) => Assignment (IntervalUnion a) -> [Constraint a] -> (Assignment (IntervalUnion a), [Constraint a])
 preprocess initial_var_domains initial_constraints = (updated_var_domains, updated_constraints <> side_conditions)
   where
     preprocess_term :: Term a -> State (PreprocessState a) (Term a)
@@ -123,15 +100,6 @@ preprocess initial_var_domains initial_constraints = (updated_var_domains, updat
     (updated_constraints, final_state) = State.runState (mapM preprocess_constraint initial_constraints) initial_state
     (_, side_conditions, updated_var_domains) = final_state
 
-evalMonomial:: (Bounded a, Num a, Ord a) => VarDomains a -> Monomial -> IntervalUnion a
-evalMonomial assignment = product . M.intersectionWith IntervalUnion.power assignment
-
-evalTerm :: (Bounded a, Ord a, Num a) => VarDomains a -> Term (IntervalUnion a) -> IntervalUnion a
-evalTerm assignment (Term coeff monomial) = coeff * evalMonomial assignment monomial
-
-eval :: (Bounded a, Ord a, Num a) => VarDomains a -> Polynomial (IntervalUnion a) -> IntervalUnion a
-eval assignment polynomial = sum (evalTerm assignment <$> Polynomial.getTerms polynomial)
-
 {-|
   Take a constraint such as
    
@@ -145,7 +113,7 @@ eval assignment polynomial = sum (evalTerm assignment <$> Polynomial.getTerms po
   has been preprocessed before. Otherwise it's not possible, in general, 
   to solve for any variable.
 -}
-solveFor :: (Ord a, Num a, Bounded a, Floating a) => Var -> Constraint a -> VarDomains a -> (ConstraintRelation, IntervalUnion a)
+solveFor :: (Ord a, Num a, Bounded a, Floating a) => Var -> Constraint a -> Assignment (IntervalUnion a) -> (ConstraintRelation, IntervalUnion a)
 solveFor var (rel, polynomial) var_domains =
   let
     Just (Term coeff monomial, rest_terms) = Polynomial.extractTerm var polynomial
@@ -216,7 +184,7 @@ chooseContractionCandidate = do
       -- Although we extract them above, they must be put back into the Map with updated weights.
       error "no contraction candidates"
 
-contractWith :: forall a. (Num a, Ord a, Floating a, Bounded a, Show a) => ContractionCandidate a -> VarDomains a -> IntervalUnion a
+contractWith :: forall a. (Num a, Ord a, Floating a, Bounded a, Show a) => ContractionCandidate a -> Assignment (IntervalUnion a) -> IntervalUnion a
 contractWith (constraint, var) var_domains = new_domain
   where
     (relation, solution) = solveFor var constraint var_domains
@@ -271,7 +239,7 @@ relativeContraction old_domain new_domain
      more principled.
 
 -}
-intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
+intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> Assignment (IntervalUnion a) -> Assignment (IntervalUnion a)
 intervalConstraintPropagation [] domains0 = domains0
 intervalConstraintPropagation constraints0 domains0 
   | null (varsIn constraints0) = domains0
@@ -287,7 +255,7 @@ intervalConstraintPropagation constraints0 domains0
 
     iterations = State.evalState (go domains1) contraction_candidates 
 
-    go :: VarDomains a -> State (WeightedContractionCandidates a) [VarDomains a]
+    go :: Assignment (IntervalUnion a) -> State (WeightedContractionCandidates a) [Assignment (IntervalUnion a)]
     go domains = do
       (old_weight, (constraint, var)) <- chooseContractionCandidate
 
@@ -398,16 +366,6 @@ example6 =
       , Term (-3.9482565) $ M.fromList [(2,1)]
       , Term (-5.6101594) $ M.fromList [(3,2),(5,2),(9,2),(1,2) ]
       ]
-
-    -- terms = 
-    --   [ Term (-6.7656198) $ M.fromList [ (0,1),(3,1),(5,1),(8,2),(1,1) ]
-    --   , Term 5.405651 $ M.fromList [ (0,1),(3,1),(8,2) ]
-    --   , Term (-5.0981903) $ M.fromList [ (0,1),(6,1) ]
-    --   , Term 5.0743403 $ M.fromList [ (0,2),(2,1),(4,2),(7,2) ]
-    --   , Term 4.6497884 $ M.fromList [ (1,1),(3,1),(4,2),(8,1) ]
-    --   , Term 0.39481923 $ M.fromList [ (3,1),(4,2),(5,2),(9,1),(1,2) ]
-    --   , Term (-5.385335) $ M.fromList [ (5,1) ]
-    --   ]
 
     constraint = (LessThan, Polynomial.mkPolynomial terms)
 

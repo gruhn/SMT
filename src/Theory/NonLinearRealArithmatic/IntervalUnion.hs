@@ -5,6 +5,7 @@ import Data.Function (on)
 import Data.List (sortBy)
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
 import Theory.NonLinearRealArithmatic.Interval (Interval(..))
+import Theory.NonLinearRealArithmatic.Polynomial (Assignable (evalMonomial))
 
 newtype IntervalUnion a = IntervalUnion { getIntervals :: [Interval a] }
   deriving (Eq, Ord)
@@ -109,3 +110,6 @@ instance (Ord a, Bounded a, Fractional a) => Fractional (IntervalUnion a) where
   fromRational x = IntervalUnion [ fromRational x :..: fromRational x ]
 
   recip = IntervalUnion . concatMap reciprocal . getIntervals
+
+instance (Ord a, Num a, Bounded a) => Assignable (IntervalUnion a) where
+  evalMonomial assignment = product . M.intersectionWith power assignment

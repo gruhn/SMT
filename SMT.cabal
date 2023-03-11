@@ -24,9 +24,10 @@ library
                     , Theory.NonLinearRealArithmatic.Interval
                     , Theory.NonLinearRealArithmatic.IntervalUnion
                     , Theory.NonLinearRealArithmatic.Polynomial
+                    , Theory.NonLinearRealArithmatic.Constraint
                     , Theory.NonLinearRealArithmatic.BoundedFloating
                     , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
-                    -- , Theory.NonLinearRealArithmatic.Subtropical
+                    , Theory.NonLinearRealArithmatic.Subtropical
                     , Theory.NonLinearRealArithmatic.VirtualSubstitution
                     , Theory.NonLinearRealArithmatic.CAD
     other-modules:    Utils

@@ -1,6 +1,10 @@
-module Theory.NonLinearRealArithmatic.Subtropical where
+{-|
+  Subtropical is a fast but incomplete method for solving non-linear real constraints.
+-}
+module Theory.NonLinearRealArithmatic.Subtropical 
+  ( subtropical 
+  ) where
 
-import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import qualified Data.List as L
 import qualified Data.IntMap as M
 import Data.IntMap ( IntMap )
@@ -72,17 +76,19 @@ positiveSolution polynomial = do
 isSolution :: (Num a, Ord a) => Polynomial a -> IntMap a -> Bool
 isSolution polynomial solution = eval solution polynomial == 0
   
--- | 
-findSolution :: forall a. (Num a, Ord a) => Polynomial a -> Maybe (IntMap a)
-findSolution polynomial
+{-| 
+-}
+subtropical :: forall a. (Ord a, Assignable a) => Polynomial a -> Maybe (Assignment a)
+subtropical polynomial
   | eval one polynomial < 0 = go one polynomial
   | eval one polynomial > 0 = go one (negate polynomial)
   | otherwise = Just one
   where
     -- solution that maps all variables to one
-    one = M.fromSet (const 1) (varsIn polynomial)
+    one :: Assignment a
+    one = M.fromList $ zip (varsIn polynomial) (repeat 1)
     
-    go :: IntMap a -> Polynomial a -> Maybe (IntMap a)
+    go :: Assignment a -> Polynomial a -> Maybe (Assignment a)
     go neg_sol polynomial = do
       pos_sol <- positiveSolution polynomial
       

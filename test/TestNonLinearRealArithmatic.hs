@@ -8,12 +8,13 @@ import Test.Tasty.QuickCheck
 import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import Theory.NonLinearRealArithmatic.Expr (Expr (BinaryOp, Var, Const), Var, BinaryOp (Mul, Sub))
 import qualified Theory.NonLinearRealArithmatic.Polynomial as Polynomial
-import Theory.NonLinearRealArithmatic.Polynomial (Polynomial, mkPolynomial, fromExpr, Term (Term))
+import Theory.NonLinearRealArithmatic.Polynomial (Polynomial, mkPolynomial, fromExpr, Term (Term), Assignment)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty ( NonEmpty, nonEmpty )
 import Data.Maybe (fromJust)
 import Theory.NonLinearRealArithmatic.Interval (Interval((:..:)))
-import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (..), VarDomains, intervalConstraintPropagation, varsIn)
+import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (intervalConstraintPropagation)
+import Theory.NonLinearRealArithmatic.Constraint (Constraint, ConstraintRelation (..), varsIn)
 import qualified Data.List as NonEmtpy
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion(IntervalUnion))
 import qualified Data.IntMap as M
@@ -72,7 +73,7 @@ instance Arbitrary ConstraintRelation where
 instance Arbitrary a => Arbitrary (NonEmpty a) where
   arbitrary = NonEmpty.fromList <$> listOf1 arbitrary
 
-allSubsetsOf :: Ord a => VarDomains a -> VarDomains a -> Bool
+allSubsetsOf :: Ord a => Assignment (IntervalUnion a) -> Assignment (IntervalUnion a) -> Bool
 allSubsetsOf domains1 domains2 = and $
   M.mergeWithKey
     (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2)
