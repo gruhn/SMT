@@ -13,7 +13,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty ( NonEmpty, nonEmpty )
 import Data.Maybe (fromJust)
 import Theory.NonLinearRealArithmatic.Interval (Interval((:..:)))
-import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (Equals), VarDomains, intervalConstraintPropagation)
+import Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (Constraint, ConstraintRelation (..), VarDomains, intervalConstraintPropagation, varsIn)
 import qualified Data.List as NonEmtpy
 import Theory.NonLinearRealArithmatic.IntervalUnion (IntervalUnion(IntervalUnion))
 import qualified Data.IntMap as M
@@ -21,17 +21,18 @@ import Theory.NonLinearRealArithmatic.BoundedFloating (BoundedFloating (Val))
 import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
+import Control.Arrow (second)
 
 tests :: TestTree
 tests = testGroup "Theory - Non Linear Real Arithmatic"
   [ testGroup "Polynomial"
       [ testProperty "Coefficients are always non-zero" prop_all_coeffs_non_zero
-      , testProperty "Exponents are alwyas non-zero" prop_exponents_always_non_zero
+      , testProperty "Exponents are always non-zero" prop_exponents_always_non_zero
       , testProperty "Monomials are pair-wise distinct" prop_unique_monomials
       ]
   , testGroup "Interval Constraint Propagation"
-      [ testProperty "No roots are lost" prop_no_roots_are_lost
-      , testProperty "Interval diameters never increase" prop_interval_diameters_never_increase
+      [ testProperty "Intervals never widen" prop_intervals_never_widen
+      , testProperty "No roots are lost" prop_no_roots_are_lost
       ]
   ]
 
@@ -40,8 +41,9 @@ instance Arbitrary a => Arbitrary (Term a) where
     -- TODO: only at most quadratic exponents supported at the moment
     let var_with_exponent = (,) <$> chooseInt (0,10) <*> chooseInt (1,2)
 
-    coeff <- arbitrary
     monomial <- M.fromList <$> listOf var_with_exponent
+    coeff <- arbitrary
+
     return $ Term coeff monomial
 
 instance (Arbitrary a, Num a, Ord a) => Arbitrary (Polynomial a) where
@@ -63,6 +65,33 @@ prop_unique_monomials :: (Polynomial Int, Polynomial Int) -> Bool
 prop_unique_monomials (p1, p2) = nubOrd monomials == monomials
   where
     monomials = Polynomial.getMonomial <$> Polynomial.getTerms (p1 + p2)
+
+instance Arbitrary ConstraintRelation where
+  arbitrary = elements [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
+
+instance Arbitrary a => Arbitrary (NonEmpty a) where
+  arbitrary = NonEmpty.fromList <$> listOf1 arbitrary
+
+allSubsetsOf :: Ord a => VarDomains a -> VarDomains a -> Bool
+allSubsetsOf domains1 domains2 = and $
+  M.mergeWithKey
+    (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2)
+    (const M.empty)
+    (const M.empty)
+    domains1
+    domains2
+
+prop_intervals_never_widen :: ([Constraint Float], Float) -> Bool
+prop_intervals_never_widen (constraints, initial_bound) =
+  let
+    constraints' :: [ Constraint (BoundedFloating Float) ]
+    constraints' = second (Polynomial.map Val) <$> constraints
+
+    initial_domain = IntervalUnion [ Val (- abs initial_bound) :..: Val (abs initial_bound) ]
+    domains_before = M.fromList $ zip (varsIn constraints') (repeat initial_domain)
+    domains_after = intervalConstraintPropagation constraints' domains_before
+  in
+    domains_after `allSubsetsOf` domains_before
 
 -- | 
 -- Make a polynomial from a given list of roots, such as 
@@ -127,22 +156,3 @@ prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost var
           guard (var == var')
           return (Val root)
 
-allSubsetsOf :: Ord a => VarDomains a -> VarDomains a -> Bool
-allSubsetsOf domains1 domains2 = and $
-  M.mergeWithKey
-    (\_ dom1 dom2 -> Just $ IntervalUnion.isSubsetOf dom1 dom2)
-    (const M.empty)
-    (const M.empty)
-    domains1
-    domains2
-
-prop_interval_diameters_never_increase :: ConstraintWithSolution -> Bool
-prop_interval_diameters_never_increase (CWS (constraint, var_root_pairs)) =
-  let
-    (vars, roots) = unzip var_root_pairs
-
-    initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
-    domains_before = M.fromList $ zip vars (repeat initial_domain)
-    domains_after = intervalConstraintPropagation [constraint] domains_before
-  in
-    domains_after `allSubsetsOf` domains_before

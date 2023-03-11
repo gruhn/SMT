@@ -29,7 +29,13 @@
   TODO: Also implement Newton constraction method
 
 -}
-module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation (VarDomains, Constraint, ConstraintRelation(..), intervalConstraintPropagation) where
+module Theory.NonLinearRealArithmatic.IntervalConstraintPropagation 
+  ( VarDomains
+  , Constraint
+  , ConstraintRelation(..)
+  , intervalConstraintPropagation
+  , varsIn
+  ) where
 
 import Theory.NonLinearRealArithmatic.Interval ( Interval ((:..:)) )
 import qualified Theory.NonLinearRealArithmatic.Interval as Interval
@@ -210,18 +216,33 @@ chooseContractionCandidate = do
       -- Although we extract them above, they must be put back into the Map with updated weights.
       error "no contraction candidates"
 
-contractWith :: (Num a, Ord a, Floating a, Bounded a, Show a) => ContractionCandidate a -> VarDomains a -> IntervalUnion a
+contractWith :: forall a. (Num a, Ord a, Floating a, Bounded a, Show a) => ContractionCandidate a -> VarDomains a -> IntervalUnion a
 contractWith (constraint, var) var_domains = new_domain
   where
     (relation, solution) = solveFor var constraint var_domains
 
+    restrictWith :: Interval a -> Interval a -> Interval a
+    restrictWith (lower_bound :..: upper_bound) (lower_bound' :..: upper_bound') =
+      case relation of
+        Equals        -> max lower_bound lower_bound' :..: min upper_bound upper_bound'
+        LessEquals    -> lower_bound :..: min upper_bound upper_bound'
+        GreaterEquals -> max lower_bound lower_bound' :..: upper_bound
+        LessThan      -> 
+          if lower_bound >= upper_bound' then
+            Interval.empty
+          else 
+            lower_bound :..: min upper_bound upper_bound'
+        GreaterThan   -> 
+          if upper_bound <= lower_bound' then 
+            Interval.empty
+          else 
+            max lower_bound lower_bound' :..: upper_bound
+
     old_domain = var_domains M.! var
-    new_domain = case relation of
-      Equals        -> IntervalUnion.intersection old_domain solution
-      LessEquals    -> error "TODO: not implemented yet"
-      LessThan      -> error "TODO: not implemented yet"
-      GreaterThan   -> error "TODO: not implemented yet"
-      GreaterEquals -> error "TODO: not implemented yet"
+    new_domain = IntervalUnion.reduce $ IntervalUnion $ do
+      interval  <- IntervalUnion.getIntervals old_domain
+      interval' <- IntervalUnion.getIntervals solution
+      return $ interval `restrictWith` interval'           
 
 relativeContraction :: (Num a, Ord a, Fractional a) => IntervalUnion a -> IntervalUnion a -> a
 relativeContraction old_domain new_domain
@@ -251,7 +272,10 @@ relativeContraction old_domain new_domain
 
 -}
 intervalConstraintPropagation :: forall a. (Num a, Ord a, Bounded a, Floating a, Show a) => [Constraint a] -> VarDomains a -> VarDomains a
-intervalConstraintPropagation constraints0 domains0 = last $ take 10 iterations
+intervalConstraintPropagation [] domains0 = domains0
+intervalConstraintPropagation constraints0 domains0 
+  | null (varsIn constraints0) = domains0
+  | otherwise                  = last $ take 10 iterations
   where
     (domains1, constraints1) = preprocess domains0 constraints0
 
@@ -363,6 +387,33 @@ example5 =
     dom = IntervalUnion [ Val (-1) :..: Val 1 ]
 
     domains_before = M.fromList [ (0, dom), (1, dom) ]
+    domains_after = intervalConstraintPropagation [ constraint ] domains_before
+  in 
+    domains_after
+
+example6 =         
+  let 
+    terms = 
+      [ Term (-0.40836024) $ M.fromList [ (0,2),(3,1),(4,2),(5,2),(7,1),(8,2) ]
+      , Term (-3.9482565) $ M.fromList [(2,1)]
+      , Term (-5.6101594) $ M.fromList [(3,2),(5,2),(9,2),(1,2) ]
+      ]
+
+    -- terms = 
+    --   [ Term (-6.7656198) $ M.fromList [ (0,1),(3,1),(5,1),(8,2),(1,1) ]
+    --   , Term 5.405651 $ M.fromList [ (0,1),(3,1),(8,2) ]
+    --   , Term (-5.0981903) $ M.fromList [ (0,1),(6,1) ]
+    --   , Term 5.0743403 $ M.fromList [ (0,2),(2,1),(4,2),(7,2) ]
+    --   , Term 4.6497884 $ M.fromList [ (1,1),(3,1),(4,2),(8,1) ]
+    --   , Term 0.39481923 $ M.fromList [ (3,1),(4,2),(5,2),(9,1),(1,2) ]
+    --   , Term (-5.385335) $ M.fromList [ (5,1) ]
+    --   ]
+
+    constraint = (LessThan, Polynomial.mkPolynomial terms)
+
+    dom = IntervalUnion [ Val (-2) :..: Val 2 ]
+
+    domains_before = M.fromList $ zip (varsIn [constraint]) (repeat dom)
     domains_after = intervalConstraintPropagation [ constraint ] domains_before
   in 
     domains_after

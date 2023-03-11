@@ -13,6 +13,7 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , isLinear
   , extractTerm
   , fromExpr
+  , map
   ) where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
@@ -25,6 +26,7 @@ import Data.Function ( on )
 import Data.Containers.ListUtils ( nubOrd )
 import Control.Monad ( guard )
 import Data.Maybe ( maybeToList )
+import Prelude hiding (map)
 
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
@@ -115,9 +117,12 @@ instance (Ord a, Num a) => Num (Polynomial a) where
 instance Functor Term where
   fmap f (Term coeff monomial) = Term (f coeff) monomial
 
--- TODO: this might violate normalization
-instance Functor Polynomial where
-  fmap f (Polynomial terms) = Polynomial (fmap (fmap f) terms)
+{-|
+  Mapping over a Polynomial might de-normalize it and applying normalization requires type 
+  constraints, so we can't define a standard Functor instance. 
+-}
+map :: (Num b, Ord b) => (a -> b) -> Polynomial a -> Polynomial b
+map f (Polynomial terms) = mkPolynomial (fmap (fmap f) terms)
   
 -- Combine terms with same monomial, e.g. combine 3*x*y and 2*y*x to 5*x*y.
 --
