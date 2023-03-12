@@ -93,11 +93,10 @@ isRoot polynomial solution = eval solution polynomial == 0
   and solving the original polynomial, thereby reducing the problem to finding roots of a univariate 
   polynomial in the interval (0 :..: 1).
 -}
-f :: forall a. (Num a, Ord a, Assignable a, Fractional a, Floating a) => Polynomial a -> Assignment a -> Assignment a -> Assignment a
-f polynomial neg_sol pos_sol =
+intermediateRoot :: forall a. (Num a, Ord a, Assignable a, Fractional a, Floating a) => Polynomial a -> Assignment a -> Assignment a -> Assignment a
+intermediateRoot polynomial neg_sol pos_sol =
   let
-    -- An arbitrary ID for the variable t. The polynomial we construct is univariate in t, 
-    -- so there is no danger of variable ID collision.
+    -- An arbitrary ID for the variable t. The polynomial we construct is univariate in t, so there is no danger of variable ID collision.
     t = 0
 
     line_segment_component :: Var -> a -> a -> Expr a
@@ -110,33 +109,33 @@ f polynomial neg_sol pos_sol =
     substitute_all :: Assignment (Expr a) -> Expr a -> Expr a
     substitute_all assignment expr = M.foldrWithKey substitute expr assignment
 
-    polynomial_in_t = fromExpr $ substitute_all line_segment_components $ toExpr polynomial
+    t_polynomial = fromExpr $ substitute_all line_segment_components $ toExpr polynomial
 
-    degree_coeff_pairs :: [(Int, a)]
-    degree_coeff_pairs = L.sortOn fst $ (termDegree &&& getCoeff) <$> getTerms polynomial_in_t
-
-    roots_in_t :: [a]
-    roots_in_t =
-      case degree_coeff_pairs of
+    t_roots :: [a]
+    t_roots =
+      case toUnivariate t_polynomial of
+        Nothing -> error "Polynomial should be univariate by construction"
         -- linear polynomial ==> solve directly for t
-        [ (0, c), (1, b) ] -> [ - b/c ]
-        -- quadratic polynomial ==> apply quadratic equation
-        [ (0, c), (1, b), (2, a) ] -> [ (-b + sqrt (b^2 - 4*a*c)) / (2*a), (-b - sqrt (b^2 - 4*a*c)) / (2*a) ]
-        -- TODO:
-        _ -> error "TODO: what to do with higher degree polynomials?"
+        Just [ (0, c), (1, b) ] -> [ - b/c ]
+        -- quadratic polynomial ==> apply quadratic formula
+        Just [ (0, c), (1, b), (2, a) ] -> 
+          [ (-b + sqrt (b^2 - 4*a*c)) / (2*a)
+          , (-b - sqrt (b^2 - 4*a*c)) / (2*a) ]
+        -- TODO: higher degree polynomial ==> use bisection?
+        Just higher_degree_polynomial -> error "TODO: subtropical does not support higher degree polynomials yet"
 
     t_solution :: Assignment a
     t_solution = 
-      case L.find (\t' -> 0 <= t' && t' <= 1) roots_in_t of
+      case L.find (\t' -> 0 <= t' && t' <= 1) t_roots of
         Just value -> M.singleton t value
         Nothing -> error "No solution for t between 0 and 1"
   in
     M.map (eval t_solution . fromExpr) line_segment_components
 
 {-| 
-  TODO: deal with to multiple constraints
+  TODO: deal with multiple constraints
 -}
-subtropical :: forall a. (Ord a, Assignable a) => Constraint a -> Maybe (Assignment a)
+subtropical :: forall a. (Ord a, Assignable a, Floating a) => Constraint a -> Maybe (Assignment a)
 subtropical (Equals, polynomial) =
   let
     -- assignment that maps all variables to one
@@ -144,16 +143,8 @@ subtropical (Equals, polynomial) =
     one = M.fromList $ zip (varsIn polynomial) (repeat 1)
 
     go :: Assignment a -> Polynomial a -> Maybe (Assignment a)
-    go neg_sol polynomial = do
-      pos_sol <- positiveSolution polynomial
+    go neg_sol polynomial = intermediateRoot polynomial neg_sol <$> positiveSolution polynomial
 
-      -- TODO: solve for t element [0;1] neg_sol + t * (pos_sol - neg_sol)
-      let t = 1
-
-      return
-        $ M.unionWith (+) neg_sol
-        $ M.map (* t)
-        $ M.unionWith (-) pos_sol neg_sol
   in
     case eval one polynomial `compare` 0 of
       LT -> go one polynomial

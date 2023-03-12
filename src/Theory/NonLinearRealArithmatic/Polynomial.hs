@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant $" #-}
+{-# HLINT ignore "Use <$>" #-}
 module Theory.NonLinearRealArithmatic.Polynomial
   ( Polynomial
   , getTerms
@@ -19,6 +20,8 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , termDegree
   , Assignable(..)
   , Assignment
+  , UnivariatePolynomial
+  , toUnivariate
   ) where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
@@ -32,6 +35,7 @@ import Data.Containers.ListUtils ( nubOrd )
 import Control.Monad ( guard )
 import Data.Maybe ( maybeToList )
 import Prelude hiding (map)
+import Control.Arrow ((&&&))
 
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
@@ -45,7 +49,7 @@ instance Show a => Show (Term a) where
   show (Term coeff monomial) = show coeff <> monomial_showed
     where
       show_var :: (Var,Int) -> String
-      show_var (var, exp) = 
+      show_var (var, exp) =
         "(x" <> show var <> "^" <> show exp <> ")"
 
       monomial_showed :: String
@@ -73,15 +77,15 @@ newtype Polynomial a = Polynomial { getTerms :: [Term a] }
 
 -}
 normalize :: (Num a, Ord a) => Polynomial a -> Polynomial a
-normalize (Polynomial terms) = 
+normalize (Polynomial terms) =
   let
     reject_zero_coeffs = filter ((/= 0) . getCoeff)
     reject_zero_exponents = fmap (modifyMonomial (M.filter (/= 0)))
   in
     Polynomial
       $ combineTerms
-      $ reject_zero_exponents 
-      $ reject_zero_coeffs 
+      $ reject_zero_exponents
+      $ reject_zero_coeffs
       $ terms
 
 {-| 
@@ -99,12 +103,12 @@ mkPolynomial :: (Num a, Ord a) => [Term a] -> Polynomial a
 mkPolynomial = normalize . Polynomial
 
 instance Show a => Show (Polynomial a) where
-  show (Polynomial terms) = 
+  show (Polynomial terms) =
     List.intercalate " + " (show <$> terms)
 
 instance (Ord a, Num a) => Num (Polynomial a) where
   (Polynomial p1) + (Polynomial p2) = mkPolynomial $ p1 <> p2
-  
+
   (Polynomial p1) * (Polynomial p2) = mkPolynomial $ do
     Term coeff1 exps1 <- p1
     Term coeff2 exps2 <- p2
@@ -118,7 +122,7 @@ instance (Ord a, Num a) => Num (Polynomial a) where
   signum (Polynomial p) = Polynomial (modifyCoeff signum <$> p)
 
   fromInteger i = mkPolynomial [Term (fromInteger i) M.empty]
-  
+
 instance Functor Term where
   fmap f (Term coeff monomial) = Term (f coeff) monomial
 
@@ -128,7 +132,7 @@ instance Functor Term where
 -}
 map :: (Num b, Ord b) => (a -> b) -> Polynomial a -> Polynomial b
 map f (Polynomial terms) = mkPolynomial (fmap (fmap f) terms)
-  
+
 -- Combine terms with same monomial, e.g. combine 3*x*y and 2*y*x to 5*x*y.
 --
 --  1.  Sort the terms BY the monomials, so equal monomials are next to each other. 
@@ -149,7 +153,7 @@ combineTerms = filter ((/= 0) . getCoeff) . go . List.sortOn getMonomial
 -- | Computes the partial derivative of a polynomial with respect to a given Var.
 partialDerivative :: forall a. (Eq a, Num a) => Var -> Polynomial a -> Polynomial a
 partialDerivative var (Polynomial terms) =
-  let 
+  let
     go :: Term a -> Term a
     go (Term coeff monomial) = Term new_coeff new_monomial
       where
@@ -182,12 +186,12 @@ fromExpr expr =
 
     UnaryOp (Exp n) (Const a) -> Polynomial [ Term (a^n) M.empty ]
     UnaryOp (Exp n) (Var var) -> Polynomial [ Term 1 (M.singleton var n) ]
-    UnaryOp (Exp n) expr -> 
-      if n < 1 then 
+    UnaryOp (Exp n) expr ->
+      if n < 1 then
         error "Non-positive exponents not supported"
       else if n == 1 then
         fromExpr expr
-      else 
+      else
         fromExpr $ BinaryOp Mul expr (UnaryOp (Exp (n-1)) expr)
 
     BinaryOp Add expr1 expr2 -> fromExpr expr1 + fromExpr expr2
@@ -199,11 +203,11 @@ toExpr :: forall a. (Ord a, Num a) => Polynomial a -> Expr a
 toExpr = sum . fmap from_term . getTerms
   where
     from_term :: Term a -> Expr a
-    from_term (Term coeff monomial) = 
+    from_term (Term coeff monomial) =
       Const coeff * product (M.mapWithKey from_var monomial)
 
     from_var :: Var -> Int -> Expr a
-    from_var var n 
+    from_var var n
       | n == 1 = Var var
       | n > 1  = UnaryOp (Exp n) (Var var)
       | otherwise = error "Non-positive exponents not supported."
@@ -213,7 +217,7 @@ toExpr = sum . fmap from_term . getTerms
 -- Or exactly one of the exponents is 1, e.g. x^0 * y^0 * z^1 = z.
 isLinear :: Monomial -> Bool
 isLinear monomial = is_zero || is_unit
-  where 
+  where
     non_zero_exponents = filter (/= 0) $ M.elems monomial
 
     is_zero = null non_zero_exponents
@@ -221,7 +225,7 @@ isLinear monomial = is_zero || is_unit
 
 termDegree :: Term a -> Int
 termDegree = sum . getMonomial
-    
+
 degree :: (Num a, Ord a) => Polynomial a -> Int
 degree = maximum . fmap termDegree . getTerms
 
@@ -233,20 +237,20 @@ cauchyBound polynomial = 1 + maximum [ abs (coeff / top_coeff) | coeff <- coeffs
     (top_coeff : coeffs) =
         filter (/= 0)
       $ fmap getCoeff
-      $ List.sortOn (negate . termDegree) 
+      $ List.sortOn (negate . termDegree)
       $ getTerms polynomial
-      
+
 varsIn :: Polynomial a -> [Var]
-varsIn (Polynomial terms) = 
+varsIn (Polynomial terms) =
   nubOrd (terms >>= M.keys . getMonomial)
-  
+
 containsVar :: Var -> Term a -> Bool
-containsVar var (Term _ monomial) = 
+containsVar var (Term _ monomial) =
   case M.lookup var monomial of
     Nothing -> False
     Just 0  -> False -- this should never occurs for normalized polynomials
     Just _  -> True
-  
+
 extractTerm :: Var -> Polynomial a -> Maybe (Term a, [Term a])
 extractTerm var (Polynomial terms) = go [] terms
   where
@@ -267,3 +271,18 @@ class Num a => Assignable a where
 
   eval :: Assignment a -> Polynomial a -> a
   eval assignment polynomial = sum (evalTerm assignment <$> getTerms polynomial)
+
+type UnivariatePolynomial a = [ (Int, a) ]
+
+{-| 
+  Extracts list of exponent/coefficient pairs, sorted by exponent. 
+  Returns Nothing, if the polynomial is multivariate.
+-}
+toUnivariate :: Polynomial a -> Maybe (UnivariatePolynomial a)
+toUnivariate polynomial =
+  case varsIn polynomial of
+    [ var ] -> Just 
+      $ L.sortOn fst 
+      $ fmap (exponentOf var . getMonomial &&& getCoeff)
+      $ getTerms polynomial
+    zero_or_two_or_more_vars -> Nothing
