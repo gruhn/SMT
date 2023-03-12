@@ -32,6 +32,30 @@ varsIn expr = case expr of
   BinaryOp _ sub_expr1 sub_expr2 ->
     nubOrd (varsIn sub_expr1 <> varsIn sub_expr2)
 
+substitute :: Var -> Expr a -> Expr a -> Expr a
+substitute var expr_subst_with expr_subst_in = 
+  case expr_subst_in of
+    Const _ -> 
+      expr_subst_in
+    Var var' -> 
+      if var == var' then expr_subst_with else expr_subst_in
+    UnaryOp op sub_expr -> 
+      UnaryOp op (substitute var expr_subst_with sub_expr)
+    BinaryOp op sub_expr1 sub_expr2 -> 
+      BinaryOp op 
+        (substitute var expr_subst_with sub_expr1)
+        (substitute var expr_subst_with sub_expr2)
+
+instance Num a => Num (Expr a) where
+  expr1 + expr2 = BinaryOp Add expr1 expr2
+  expr1 * expr2 = BinaryOp Mul expr1 expr2
+  expr1 - expr2 = BinaryOp Sub expr1 expr2
+
+  abs expr = error "TODO: abs not defined for expr. What would make sense here?"
+  signum expr = error "TODO: signum not defined for expr. What would make sense here?"
+
+  fromInteger n = Const (fromInteger n)
+
 {-
 
 domainOf :: Bounded a => Var -> VarDomains a -> Interval a

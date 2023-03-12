@@ -13,7 +13,10 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , isLinear
   , extractTerm
   , fromExpr
+  , toExpr
   , map
+  , degree
+  , termDegree
   , Assignable(..)
   , Assignment
   ) where
@@ -193,11 +196,11 @@ fromExpr expr =
     BinaryOp Div _ _ -> error "Division in user provided expressions not supported"
 
 toExpr :: forall a. (Ord a, Num a) => Polynomial a -> Expr a
-toExpr = foldr1 (BinaryOp Add) . fmap from_term . getTerms
+toExpr = sum . fmap from_term . getTerms
   where
     from_term :: Term a -> Expr a
     from_term (Term coeff monomial) = 
-      foldr (BinaryOp Mul) (Const coeff) (M.mapWithKey from_var monomial)
+      Const coeff * product (M.mapWithKey from_var monomial)
 
     from_var :: Var -> Int -> Expr a
     from_var var n 
