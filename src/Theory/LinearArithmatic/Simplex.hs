@@ -95,7 +95,7 @@ pivot' basic_var non_basic_var (Tableau non_basis bounds assignment) =
     new_value_basic_var = from_just "Basic variable doesn't have a bound so it's not actually violated"
       $ snd <$> M.lookup basic_var bounds
 
-    basic_var_coeff = _
+    basic_var_coeff = snd equation M.! basic_var
 
     old_value_non_basic_var = non_basis M.! non_basic_bar
     new_value_non_basic_var = old_value_non_basic_var + (old_value_basic_bar - new_value_basic_var) / basic_var_coeff

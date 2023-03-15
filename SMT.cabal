@@ -18,7 +18,7 @@ library
                     , Theory.UninterpretedFunctions.Lazy
                     , Theory.UninterpretedFunctions.Eager
                     , Theory.LinearArithmatic.FourierMotzkin
-                    -- , Theory.LinearArithmatic.Simplex
+                    , Theory.LinearArithmatic.Simplex
                     , Theory.LinearArithmatic.BranchAndBound
                     , Theory.NonLinearRealArithmatic.Expr
                     , Theory.NonLinearRealArithmatic.Interval
