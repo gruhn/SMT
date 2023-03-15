@@ -43,12 +43,14 @@ library
     default-extensions: ScopedTypeVariables
                       , LambdaCase
                       , StrictData
+                      , TupleSections
 
 test-suite test
     type:             exitcode-stdio-1.0 
     main-is:          Test.hs
     other-modules:    GameUnequal
                     , TestNonLinearRealArithmatic
+                    , TestLinearArithmatic
     build-depends:    base ^>=4.14.3.0
                     , SMT
                     , tasty

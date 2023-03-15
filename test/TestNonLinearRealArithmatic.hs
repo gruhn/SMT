@@ -156,4 +156,3 @@ prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost var
           (var', root) <- var_root_pairs
           guard (var == var')
           return (Val root)
-
