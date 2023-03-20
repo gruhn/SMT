@@ -6,6 +6,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Theory.LinearArithmatic.Simplex
+import qualified Data.IntMap as M
 
 tests :: TestTree
 tests = testGroup "Theory - Linear Arithmatic"
@@ -40,8 +41,21 @@ isModel assignment constraints =
 --     _
 --     return $ Constraint'
 
-prop_simplex_sound :: [Constraint Float] -> Bool
-prop_simplex_sound constraints = 
-  case simplex constraints of
+prop_simplex_sound :: Property
+prop_simplex_sound = property $ do
+  constraints <- listOf $ do
+    linear_term <- fmap M.fromList $ listOf $ do 
+      coeff <- arbitrary :: Gen Float
+      var <- chooseInt (0, 20)
+      return (var, coeff)
+
+    -- TODO: extend Simplex to all constraint relation types
+    rel <- elements [LessEquals, GreaterEquals]  
+
+    constant <- arbitrary :: Gen Float
+
+    return (linear_term, rel, constant)
+
+  return $ case simplex constraints of
     Nothing         -> True
     Just assignment -> assignment `isModel` constraints

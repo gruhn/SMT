@@ -37,35 +37,47 @@ tests = testGroup "Theory - Non Linear Real Arithmatic"
       ]
   ]
 
-instance Arbitrary a => Arbitrary (Term a) where
-  arbitrary = do
-    -- TODO: only at most quadratic exponents supported at the moment
-    let var_with_exponent = (,) <$> chooseInt (0,10) <*> chooseInt (1,2)
+genTerm :: Arbitrary a => Gen (Term a)
+genTerm = do
+  -- TODO: only at most quadratic exponents supported at the moment
+  let var_with_exponent = (,) <$> chooseInt (0,10) <*> chooseInt (1,2)
 
-    monomial <- M.fromList <$> listOf var_with_exponent
-    coeff <- arbitrary
+  monomial <- M.fromList <$> listOf var_with_exponent
+  coeff <- arbitrary
 
-    return $ Term coeff monomial
+  return $ Term coeff monomial
 
-instance (Arbitrary a, Num a, Ord a) => Arbitrary (Polynomial a) where
-  arbitrary = mkPolynomial <$> listOf arbitrary
+genPolynomial :: (Arbitrary a, Num a, Ord a) => Gen (Polynomial a)
+genPolynomial = mkPolynomial <$> listOf genTerm
 
-prop_all_coeffs_non_zero :: (Polynomial Int, Polynomial Int) -> Bool
-prop_all_coeffs_non_zero (p1, p2) = 0 `notElem` coeffs
-  where
-    coeffs = fmap Polynomial.getCoeff $ Polynomial.getTerms $ p1 + p2
+prop_all_coeffs_non_zero :: Property
+prop_all_coeffs_non_zero = property $ do 
+  p1 <- genPolynomial
+  p2 <- genPolynomial
+  let coeffs :: [Int]
+      coeffs = fmap Polynomial.getCoeff $ Polynomial.getTerms $ p1 + p2
+  return $ 0 `notElem` coeffs
 
-prop_exponents_always_non_zero :: (Polynomial Int, Polynomial Int) -> Bool
-prop_exponents_always_non_zero (p1, p2) = 0 `notElem` exponents
-  where
-    exponents = do 
-      term <- Polynomial.getTerms (p1 * p2)
-      M.elems $ Polynomial.getMonomial term
+prop_exponents_always_non_zero :: Property
+prop_exponents_always_non_zero = property $ do
+  p1 <- genPolynomial :: Gen (Polynomial Int)
+  p2 <- genPolynomial :: Gen (Polynomial Int)
 
-prop_unique_monomials :: (Polynomial Int, Polynomial Int) -> Bool
-prop_unique_monomials (p1, p2) = nubOrd monomials == monomials
-  where
-    monomials = Polynomial.getMonomial <$> Polynomial.getTerms (p1 + p2)
+  let exponents :: [Int]
+      exponents = do 
+        term <- Polynomial.getTerms (p1 * p2)
+        M.elems $ Polynomial.getMonomial term
+
+  return $ 0 `notElem` exponents
+
+prop_unique_monomials :: Property
+prop_unique_monomials = property $ do 
+  p1 <- genPolynomial :: Gen (Polynomial Float)
+  p2 <- genPolynomial :: Gen (Polynomial Float)
+
+  let monomials = Polynomial.getMonomial <$> Polynomial.getTerms (p1 + p2)
+
+  return $ nubOrd monomials == monomials
 
 instance Arbitrary ConstraintRelation where
   arbitrary = elements [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
@@ -82,8 +94,17 @@ allSubsetsOf domains1 domains2 = and $
     domains1
     domains2
 
-prop_intervals_never_widen :: ([Constraint Float], Float) -> Bool
-prop_intervals_never_widen (constraints, initial_bound) =
+genConstraint :: Gen (Constraint Float)
+genConstraint = do
+  polynomial <- genPolynomial
+  relation <- elements [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
+  return (relation, polynomial)
+
+prop_intervals_never_widen :: Property
+prop_intervals_never_widen = property $ do
+  constraints <- listOf genConstraint
+  initial_bound <- arbitrary :: Gen Float
+
   let
     constraints' :: [ Constraint (BoundedFloating Float) ]
     constraints' = second (Polynomial.map Val) <$> constraints
@@ -91,7 +112,8 @@ prop_intervals_never_widen (constraints, initial_bound) =
     initial_domain = IntervalUnion [ Val (- abs initial_bound) :..: Val (abs initial_bound) ]
     domains_before = M.fromList $ zip (varsIn constraints') (repeat initial_domain)
     domains_after = intervalConstraintPropagation constraints' domains_before
-  in
+
+  return $
     domains_after `allSubsetsOf` domains_before
 
 -- | 
@@ -115,44 +137,36 @@ polynomialFromRoots var_root_pairs = fromExpr expr
 
     expr = foldr1 (BinaryOp Mul) (uncurry factor_from <$> var_root_pairs)
 
-newtype ConstraintWithSolution = CWS
-  { getCWS :: (Constraint (BoundedFloating Float), [(Var, Float)]) }
-    deriving Show
+prop_no_roots_are_lost :: Property
+prop_no_roots_are_lost = property $ do
+  var_count <- chooseInt (0, 10)
+  let vars = [0 .. var_count]
 
-mkCWS :: [Var] -> [Float] -> ConstraintWithSolution
-mkCWS vars roots = CWS (constraint, var_root_pairs)
-  where
-    -- TODO: Currently, variables can appear at most quadratic, 
-    -- so we have to make sure we are not generating polynomials
-    -- with larger powers.
-    var_root_pairs = zip (vars <> vars) roots
+  root_count <- chooseInt (1, 10)
+  -- only generate integer valued floats as roots to reduce numeric issues
+  int_roots <- vectorOf root_count arbitrary :: Gen [Int]
+  let roots = fmap fromIntegral int_roots :: [Float]
+  
+  -- TODO: Currently, variables can appear at most quadratic, 
+  -- so we have to make sure we are not generating polynomials
+  -- with larger powers.
+  let var_root_pairs = zip (vars <> vars) roots
 
-    -- TODO: generate more than one constraint and also inequality constraints.
-    constraint = (Equals, polynomialFromRoots $ NonEmpty.fromList var_root_pairs)
+  -- TODO: generate more than one constraint and also inequality constraints.
+  let constraint = (Equals, polynomialFromRoots $ NonEmpty.fromList var_root_pairs)
 
-instance Arbitrary ConstraintWithSolution where
-  arbitrary = do
-    var_count <- chooseInt (0, 10)
-    root_count <- chooseInt (1, 10)
-    -- only generate integer valued floats as roots to reduce numeric issues
-    roots <- vectorOf root_count arbitrary :: Gen [Int]
-    return $ mkCWS [0 .. var_count] (fromIntegral <$> roots)
+  let initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
+      domains0 = M.fromList $ zip vars (repeat initial_domain)
 
-prop_no_roots_are_lost :: ConstraintWithSolution -> Bool
-prop_no_roots_are_lost (CWS (constraint, var_root_pairs)) = all no_root_lost vars
-  where
-    (vars, roots) = unzip var_root_pairs
+      final_domains = intervalConstraintPropagation [constraint] domains0
 
-    initial_domain = IntervalUnion [ Val (minimum roots - 1) :..: Val (maximum roots + 1) ]
-    domains0 = M.fromList $ zip vars (repeat initial_domain)
+      no_root_lost :: Var -> Bool
+      no_root_lost var = all (`IntervalUnion.elem` domain_of_var) roots_of_var
+        where
+          domain_of_var = final_domains M.! var
+          roots_of_var = do
+            (var', root) <- var_root_pairs
+            guard (var == var')
+            return (Val root)
 
-    final_domains = intervalConstraintPropagation [constraint] domains0
-
-    no_root_lost :: Var -> Bool
-    no_root_lost var = all (`IntervalUnion.elem` domain_of_var) roots_of_var
-      where
-        domain_of_var = final_domains M.! var
-        roots_of_var = do
-          (var', root) <- var_root_pairs
-          guard (var == var')
-          return (Val root)
+  return $ all no_root_lost vars

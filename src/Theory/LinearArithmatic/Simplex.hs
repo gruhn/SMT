@@ -5,7 +5,6 @@ import qualified Data.IntMap.Merge.Lazy as MM
 import qualified Data.IntSet as S
 import Control.Monad (unless, guard)
 import Data.Bifunctor (bimap)
-import Debug.Trace
 import Data.Maybe (fromMaybe)
 
 type Var = Int
@@ -235,12 +234,12 @@ pivot basic_var non_basic_var (Tableau basis bounds assignment) =
   TODO: 
     in case of UNSAT include explanation, i.e. minimal infeasible subset of constraints.
 -}
-simplex :: forall a. (Num a, Ord a, Fractional a, Show a) => [Constraint a] -> Maybe (Assignment a)
+simplex :: forall a. (Num a, Ord a, Fractional a) => [Constraint a] -> Maybe (Assignment a)
 simplex constraints =
   let
     go :: Tableau a -> Tableau a
     go tableau = 
-      case pivotCandidates $ traceShowId $ tableau of 
+      case pivotCandidates $ tableau of 
         [] -> tableau
         ((basic_var, non_basic_var) : _) ->
           go (pivot basic_var non_basic_var tableau)
