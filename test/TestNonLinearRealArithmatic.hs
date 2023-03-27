@@ -1,9 +1,9 @@
-{-# LANGUAGE FlexibleInstances #-}
-module TestNonLinearRealArithmatic (tests) where
+{-# LANGUAGE OverloadedStrings #-}
+module TestNonLinearRealArithmatic (testGroups) where
 
-import Test.Tasty
-import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck
+import Hedgehog hiding (eval)
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
 import qualified Theory.NonLinearRealArithmatic.Expr as Expr
 import Theory.NonLinearRealArithmatic.Expr (Expr (BinaryOp, Var, Const), Var, BinaryOp (Mul, Sub))
@@ -24,66 +24,59 @@ import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
 import Control.Arrow (second)
 
-tests :: TestTree
-tests = testGroup "Theory - Non Linear Real Arithmatic"
-  [ testGroup "Polynomial"
-      [ testProperty "Coefficients are always non-zero" prop_all_coeffs_non_zero
-      , testProperty "Exponents are always non-zero" prop_exponents_always_non_zero
-      , testProperty "Monomials are pair-wise distinct" prop_unique_monomials
+testGroups = 
+  [ Group "Polynomial"
+      [ ("Coefficients are always non-zero", prop_all_coeffs_non_zero)
+      , ("Exponents are always non-zero", prop_exponents_always_non_zero)
+      , ("Monomials are pair-wise distinct", prop_unique_monomials)
       ]
-  , testGroup "Interval Constraint Propagation"
-      [ testProperty "Intervals never widen" prop_intervals_never_widen
-      , testProperty "No roots are lost" prop_no_roots_are_lost
+  , Group "Interval Constraint Propagation"
+      [ ("Intervals never widen", prop_intervals_never_widen)
+      , ("No roots are lost", prop_no_roots_are_lost)
       ]
   ]
 
-genTerm :: Arbitrary a => Gen (Term a)
+genTerm :: Gen (Term Float)
 genTerm = do
   -- TODO: only at most quadratic exponents supported at the moment
-  let var_with_exponent = (,) <$> chooseInt (0,10) <*> chooseInt (1,2)
-
-  monomial <- M.fromList <$> listOf var_with_exponent
-  coeff <- arbitrary
-
+  let var_with_exponent = (,) <$> Gen.int (Range.linear 0 10) <*> Gen.int (Range.linear 1 2)
+  monomial <- M.fromList <$> Gen.list (Range.linear 1 10) var_with_exponent
+  coeff <- Gen.float $ Range.linearFrac (-1000) 1000
   return $ Term coeff monomial
 
-genPolynomial :: (Arbitrary a, Num a, Ord a) => Gen (Polynomial a)
-genPolynomial = mkPolynomial <$> listOf genTerm
+genPolynomial :: Gen (Polynomial Float)
+genPolynomial = mkPolynomial <$> Gen.list (Range.linear 0 100) genTerm
 
 prop_all_coeffs_non_zero :: Property
 prop_all_coeffs_non_zero = property $ do 
-  p1 <- genPolynomial
-  p2 <- genPolynomial
-  let coeffs :: [Int]
-      coeffs = fmap Polynomial.getCoeff $ Polynomial.getTerms $ p1 + p2
-  return $ 0 `notElem` coeffs
+  p1 <- forAll genPolynomial
+  p2 <- forAll genPolynomial
+  let coeffs = fmap Polynomial.getCoeff $ Polynomial.getTerms $ p1 + p2
+  assert $ 0 `notElem` coeffs
 
 prop_exponents_always_non_zero :: Property
 prop_exponents_always_non_zero = property $ do
-  p1 <- genPolynomial :: Gen (Polynomial Int)
-  p2 <- genPolynomial :: Gen (Polynomial Int)
+  p1 <- forAll genPolynomial
+  p2 <- forAll genPolynomial
 
-  let exponents :: [Int]
-      exponents = do 
+  let exponents = do 
         term <- Polynomial.getTerms (p1 * p2)
         M.elems $ Polynomial.getMonomial term
 
-  return $ 0 `notElem` exponents
+  assert $ 0 `notElem` exponents
 
 prop_unique_monomials :: Property
 prop_unique_monomials = property $ do 
-  p1 <- genPolynomial :: Gen (Polynomial Float)
-  p2 <- genPolynomial :: Gen (Polynomial Float)
+  p1 <- forAll genPolynomial
+  p2 <- forAll genPolynomial
 
   let monomials = Polynomial.getMonomial <$> Polynomial.getTerms (p1 + p2)
 
-  return $ nubOrd monomials == monomials
+  nubOrd monomials === monomials
 
-instance Arbitrary ConstraintRelation where
-  arbitrary = elements [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
-
-instance Arbitrary a => Arbitrary (NonEmpty a) where
-  arbitrary = NonEmpty.fromList <$> listOf1 arbitrary
+genConstraintRelation :: Gen ConstraintRelation 
+genConstraintRelation = 
+  Gen.element [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
 
 allSubsetsOf :: Ord a => Assignment (IntervalUnion a) -> Assignment (IntervalUnion a) -> Bool
 allSubsetsOf domains1 domains2 = and $
@@ -97,13 +90,13 @@ allSubsetsOf domains1 domains2 = and $
 genConstraint :: Gen (Constraint Float)
 genConstraint = do
   polynomial <- genPolynomial
-  relation <- elements [Equals, LessEquals, LessThan, GreaterEquals, GreaterThan]
+  relation <- genConstraintRelation
   return (relation, polynomial)
 
 prop_intervals_never_widen :: Property
 prop_intervals_never_widen = property $ do
-  constraints <- listOf genConstraint
-  initial_bound <- arbitrary :: Gen Float
+  constraints <- forAll $ Gen.list (Range.linear 1 20) genConstraint
+  initial_bound <- forAll $ Gen.float (Range.linearFrac (-1000) 1000)
 
   let
     constraints' :: [ Constraint (BoundedFloating Float) ]
@@ -113,8 +106,7 @@ prop_intervals_never_widen = property $ do
     domains_before = M.fromList $ zip (varsIn constraints') (repeat initial_domain)
     domains_after = intervalConstraintPropagation constraints' domains_before
 
-  return $
-    domains_after `allSubsetsOf` domains_before
+  assert $ domains_after `allSubsetsOf` domains_before
 
 -- | 
 -- Make a polynomial from a given list of roots, such as 
@@ -129,24 +121,24 @@ prop_intervals_never_widen = property $ do
 --
 -- This is useful for testing the root finding algorithms, 
 -- because we can generate random polynomials but with known roots.
-polynomialFromRoots :: NonEmpty (Var, Float) -> Polynomial (BoundedFloating Float)
+polynomialFromRoots :: NonEmpty (Expr.Var, Float) -> Polynomial (BoundedFloating Float)
 polynomialFromRoots var_root_pairs = fromExpr expr
   where
-    factor_from :: Var -> Float -> Expr (BoundedFloating Float)
-    factor_from var root = BinaryOp Sub (Const $ Val root) (Var var)
+    factor_from :: Expr.Var -> Float -> Expr (BoundedFloating Float)
+    factor_from var root = BinaryOp Sub (Const $ Val root) (Expr.Var var)
 
     expr = foldr1 (BinaryOp Mul) (uncurry factor_from <$> var_root_pairs)
 
 prop_no_roots_are_lost :: Property
 prop_no_roots_are_lost = property $ do
-  var_count <- chooseInt (0, 10)
+  var_count <- forAll $ Gen.int (Range.linear 0 10)
   let vars = [0 .. var_count]
 
-  root_count <- chooseInt (1, 10)
+  root_count <- forAll $ Gen.int (Range.linear 1 10)
   -- only generate integer valued floats as roots to reduce numeric issues
-  int_roots <- vectorOf root_count arbitrary :: Gen [Int]
-  let roots = fmap fromIntegral int_roots :: [Float]
-  
+  int_roots <- forAll $ Gen.list (Range.singleton root_count) $ Gen.int (Range.linear (-1000) 1000)
+  let roots = fmap fromIntegral int_roots  
+
   -- TODO: Currently, variables can appear at most quadratic, 
   -- so we have to make sure we are not generating polynomials
   -- with larger powers.
@@ -160,7 +152,7 @@ prop_no_roots_are_lost = property $ do
 
       final_domains = intervalConstraintPropagation [constraint] domains0
 
-      no_root_lost :: Var -> Bool
+      no_root_lost :: Expr.Var -> Bool
       no_root_lost var = all (`IntervalUnion.elem` domain_of_var) roots_of_var
         where
           domain_of_var = final_domains M.! var
@@ -169,4 +161,4 @@ prop_no_roots_are_lost = property $ do
             guard (var == var')
             return (Val root)
 
-  return $ all no_root_lost vars
+  assert $ all no_root_lost vars

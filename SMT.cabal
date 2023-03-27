@@ -31,7 +31,7 @@ library
                     , Theory.NonLinearRealArithmatic.VirtualSubstitution
                     , Theory.NonLinearRealArithmatic.CAD
     other-modules:    Utils
-    build-depends:    base ^>=4.14.3.0
+    build-depends:    base
                     , megaparsec
                     , containers
                     , parser-combinators
@@ -51,12 +51,9 @@ test-suite test
     other-modules:    GameUnequal
                     , TestNonLinearRealArithmatic
                     , TestLinearArithmatic
-    build-depends:    base ^>=4.14.3.0
+    build-depends:    base
                     , SMT
-                    , tasty
-                    , tasty-hunit
-                    , tasty-quickcheck
-                    , QuickCheck
+                    , hedgehog
                     , containers
     hs-source-dirs:   test
     default-language: Haskell2010

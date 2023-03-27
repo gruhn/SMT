@@ -1,21 +1,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module TestLinearArithmatic (tests) where
+{-# LANGUAGE OverloadedStrings #-}
+module TestLinearArithmatic (testGroups) where
 
-import Test.Tasty
-import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck
+import Hedgehog hiding (eval)
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
 import Theory.LinearArithmatic.Simplex
 import qualified Data.IntMap as M
 
-tests :: TestTree
-tests = testGroup "Theory - Linear Arithmatic"
-  [ testProperty "Simplex method is sound" prop_simplex_sound
+testGroups = 
+  [ Group "Theory - Linear Arithmatic"
+    [ ("Simplex method is sound", prop_simplex_sound)
+    ]
   ]
-
--- TODO: extend Simplex to all constraint relation types
-instance Arbitrary ConstraintRelation where
-  arbitrary = elements [LessEquals, GreaterEquals]
 
 isModel :: forall a. (Eq a, Num a, Ord a) => Assignment a -> [Constraint a] -> Bool
 isModel assignment constraints =
@@ -43,19 +41,19 @@ isModel assignment constraints =
 
 prop_simplex_sound :: Property
 prop_simplex_sound = property $ do
-  constraints <- listOf $ do
-    linear_term <- fmap M.fromList $ listOf $ do 
-      coeff <- arbitrary :: Gen Float
-      var <- chooseInt (0, 20)
+  constraints <- forAll $ Gen.list (Range.linear 1 50) $ do
+    linear_term <- fmap M.fromList $ Gen.list (Range.linear 0 20) $ do 
+      coeff <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
+      var <- Gen.int (Range.linear 0 20)
       return (var, coeff)
 
     -- TODO: extend Simplex to all constraint relation types
-    rel <- elements [LessEquals, GreaterEquals]  
+    rel <- Gen.element [LessEquals, GreaterEquals]  
 
-    constant <- arbitrary :: Gen Float
+    constant <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
 
     return (linear_term, rel, constant)
 
-  return $ case simplex constraints of
-    Nothing         -> True
-    Just assignment -> assignment `isModel` constraints
+  case simplex constraints of
+    Nothing         -> success
+    Just assignment -> assert $ assignment `isModel` constraints
