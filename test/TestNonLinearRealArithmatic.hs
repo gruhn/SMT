@@ -1,5 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
-module TestNonLinearRealArithmatic (testGroups) where
+module TestNonLinearRealArithmatic 
+  ( prop_all_coeffs_non_zero
+  , prop_exponents_always_non_zero
+  , prop_intervals_never_widen
+  , prop_no_roots_are_lost
+  , prop_unique_monomials  
+  ) where
 
 import Hedgehog hiding (eval)
 import qualified Hedgehog.Gen as Gen
@@ -23,18 +28,6 @@ import qualified Theory.NonLinearRealArithmatic.IntervalUnion as IntervalUnion
 import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
 import Control.Arrow (second)
-
-testGroups = 
-  [ Group "Polynomial"
-      [ ("Coefficients are always non-zero", prop_all_coeffs_non_zero)
-      , ("Exponents are always non-zero", prop_exponents_always_non_zero)
-      , ("Monomials are pair-wise distinct", prop_unique_monomials)
-      ]
-  , Group "Interval Constraint Propagation"
-      [ ("Intervals never widen", prop_intervals_never_widen)
-      , ("No roots are lost", prop_no_roots_are_lost)
-      ]
-  ]
 
 genTerm :: Gen (Term Float)
 genTerm = do

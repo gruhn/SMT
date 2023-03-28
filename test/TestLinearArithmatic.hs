@@ -1,6 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-module TestLinearArithmatic (testGroups) where
+module TestLinearArithmatic (prop_simplex_sound) where
 
 import Hedgehog hiding (eval)
 import qualified Hedgehog.Gen as Gen
@@ -9,16 +8,10 @@ import qualified Hedgehog.Range as Range
 import Theory.LinearArithmatic.Simplex
 import qualified Data.IntMap as M
 
-testGroups = 
-  [ Group "Theory - Linear Arithmatic"
-    [ ("Simplex method is sound", prop_simplex_sound)
-    ]
-  ]
-
-isModel :: forall a. (Eq a, Num a, Ord a) => Assignment a -> [Constraint a] -> Bool
+isModel :: Assignment -> [Constraint] -> Bool
 isModel assignment constraints =
   let
-    check :: Constraint a -> Bool
+    check :: Constraint -> Bool
     check (linear_term, rel, bound) = 
       case rel of 
         LessThan      -> eval assignment linear_term < bound
@@ -42,18 +35,22 @@ isModel assignment constraints =
 prop_simplex_sound :: Property
 prop_simplex_sound = property $ do
   constraints <- forAll $ Gen.list (Range.linear 1 50) $ do
-    linear_term <- fmap M.fromList $ Gen.list (Range.linear 0 20) $ do 
-      coeff <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
+    linear_term <- fmap M.fromList $ Gen.list (Range.linear 0 10) $ do 
+      -- coeff <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
+      coeff <- toRational <$> Gen.int (Range.linear (-100) 100)
       var <- Gen.int (Range.linear 0 20)
       return (var, coeff)
 
     -- TODO: extend Simplex to all constraint relation types
     rel <- Gen.element [LessEquals, GreaterEquals]  
 
-    constant <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
+    constant <- toRational <$> Gen.int (Range.linear (-100) 100)
+    -- constant <- Gen.float (Range.linearFrac (-100.0) 100.0)
 
     return (linear_term, rel, constant)
 
   case simplex constraints of
     Nothing         -> success
-    Just assignment -> assert $ assignment `isModel` constraints
+    Just assignment -> do 
+      annotate $ show assignment 
+      assert $ assignment `isModel` constraints

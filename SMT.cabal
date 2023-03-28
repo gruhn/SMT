@@ -57,3 +57,4 @@ test-suite test
                     , containers
     hs-source-dirs:   test
     default-language: Haskell2010
+    default-extensions: StrictData
