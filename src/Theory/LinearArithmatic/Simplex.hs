@@ -3,7 +3,7 @@
   to sets of linear constraints. All coefficients, bounds, and solutions are of type 
   `Rational` to avoid having to deal with numeric issues at the cost of performance.
 -}
-module Theory.LinearArithmatic.Simplex (simplex, Assignment, Constraint, ConstraintRelation (..), eval) where
+module Theory.LinearArithmatic.Simplex (simplex) where
 
 import Control.Monad (guard)
 import Data.Bifunctor (bimap)
@@ -11,61 +11,41 @@ import qualified Data.IntMap.Strict as M
 import qualified Data.IntMap.Merge.Strict as MM
 import qualified Data.IntSet as S
 import Data.Maybe (fromMaybe, mapMaybe)
+import Theory.LinearArithmatic.Constraint
 import Debug.Trace
-
-type Var = Int
-
-data ConstraintRelation = LessThan | LessEquals | Equals | GreaterEquals | GreaterThan
-  deriving (Show)
-
--- |
--- For example, constraint such as `3x + y <= 3` is represented as:
---
---     (3x+y, LessEquals, 3)
-type Constraint = (LinearTerm, ConstraintRelation, Rational)
-
--- | Map from variable IDs to assigned values
-type Assignment = M.IntMap Rational
-
--- | Map from variable IDs to coefficients
-type LinearTerm = M.IntMap Rational
 
 data BoundType = UpperBound | LowerBound
   deriving (Show)
 
 data Tableau = Tableau
-  { getBasis :: M.IntMap LinearTerm,
+  { getBasis :: M.IntMap LinearExpr,
     getBounds :: M.IntMap (BoundType, Rational),
     getAssignment :: Assignment
   }
   deriving (Show)
 
-varsIn :: [Constraint] -> S.IntSet
-varsIn constraints = S.unions $ do
-  (linear_term, _, _) <- constraints
-  return $ M.keysSet linear_term
-
--- |
---  Transform constraints to "General From" and initialize Simplex tableau.
+{-|
+  Transform constraints to "General From" and initialize Simplex tableau.
+-}
 initTableau :: [Constraint] -> Tableau
 initTableau constraints =
   let 
-    original_vars = varsIn constraints
+    original_vars = foldr (S.union . varsIn) S.empty constraints
     max_original_var = if S.null original_vars then -1 else S.findMax original_vars
     fresh_vars = [max_original_var + 1 ..]
 
     (basis, bounds) = bimap M.fromList M.fromList $ unzip $ do
-      (slack_var, (linear_term, relation, bound)) <- zip fresh_vars constraints
+      (slack_var, (relation, affine_expr)) <- zip fresh_vars constraints
 
       let bound_type =
             case relation of
-              LessEquals -> UpperBound
+              LessEquals    -> UpperBound
               GreaterEquals -> LowerBound
-              other_rels -> error "TODO: extend Simplex to all constraint relations"
+              other_rels    -> error "TODO: extend Simplex to all constraint relations"
 
       return
-        ( (slack_var, linear_term),
-          (slack_var, (bound_type, bound))
+        ( (slack_var, getCoeffMap affine_expr)
+        , (slack_var, (bound_type, - getConstant affine_expr))
         )
 
     slack_vars = M.keys bounds
@@ -108,12 +88,12 @@ pivotCandidates :: Tableau -> [(Var, Var)]
 pivotCandidates tableau@(Tableau basis bounds assignment) = do
   (basic_var, violation) <- violatedBasicVars tableau
 
-  let term = basis M.! basic_var
+  let expr = basis M.! basic_var
       non_basis = M.keysSet assignment S.\\ M.keysSet basis
 
   non_basic_var <- S.toAscList non_basis
 
-  let non_basic_var_coeff = M.findWithDefault 0 non_basic_var term
+  let non_basic_var_coeff = M.findWithDefault 0 non_basic_var expr
       non_basic_bound_type = fst <$> M.lookup non_basic_var bounds
       can_pivot =
         case (non_basic_bound_type, signum non_basic_var_coeff, violation) of
@@ -146,97 +126,79 @@ pivotCandidates tableau@(Tableau basis bounds assignment) = do
   guard can_pivot
   return (basic_var, non_basic_var)
 
-type Equation = (Var, LinearTerm)
+type Equation = (Var, LinearExpr)
 
--- |
---  Solve an equation for a given variable. For example solving
---
---    y = 3x + 10
---
---  for x, yields
---
---    x = 1/3 y - 10/3
-solveFor :: Equation -> Var -> Maybe Equation
-solveFor (y, right_hand_side) x = do
-  coeff_of_x <- M.lookup x right_hand_side
-  guard (coeff_of_x /= 0)
-  return $
-    (x,)
-    -- divide by coefficient: x = -1/3y - 10/3
-    $
-      M.map (/ (-coeff_of_x))
-      -- exchange x and y: -3x = -y + 10
-      $
-        M.insert y (-1) $
-          M.delete x right_hand_side
+{-|
+  Given two equations, such as
 
--- |
---  Given two equations, such as
---
---    e1: x = w + 2z
---    e2: y = 3x + 4z
---
---  rewrite x in e2 using e1:
---
---    y = 3(w + 2z) + 4z
---      = 3w + 10z
+    e1: x = w + 2z
+    e2: y = 3x + 4z
+
+  rewrite x in e2 using e1:
+
+    y = 3(w + 2z) + 4z
+      = 3w + 10z
+-}
 rewrite :: Equation -> Equation -> Equation
-rewrite (x, term_x) (y, term_y) =
-  let coeff_of_x = M.findWithDefault 0 x term_y
-      term_x' = M.map (* coeff_of_x) term_x
-      term_y' = M.unionWith (+) (M.delete x term_y) term_x'
-   in (y, term_y')
+rewrite (x, expr_x) (y, expr_y) =
+  let coeff_of_x = M.findWithDefault 0 x expr_y
+      expr_x' = M.map (* coeff_of_x) expr_x
+      expr_y' = M.unionWith (+) (M.delete x expr_y) expr_x'
+   in (y, expr_y')
 
-eval :: Assignment -> LinearTerm -> Rational
-eval assignment term =
-  sum $
-    MM.merge
-      MM.dropMissing
-      MM.dropMissing
-      (MM.zipWithMatched (const (*)))
-      assignment
-      term
+{-|
+  Specialization of `solveFor` for linear equations, instead of affine constraints, i.e. 
+  no constant terms and no inequalities.
+-}
+solveFor' :: Equation -> Var -> Maybe Equation
+solveFor' (x, expr_x) y = do
+  let constraint = (Equals, AffineExpr 0 $ M.insert x (-1) expr_x)
+  (_, AffineExpr _ expr_y) <- solveFor constraint y
+  return (y, expr_y)
 
--- |
---  TODO: make sure:
---
---    - only slack variables are pivoted
---    - non-basic variables must violate bound
---    - basic variable is suitable for pivoting
+{-|
+  TODO: make sure:
+
+    - only slack variables are pivoted
+    - non-basic variables must violate bound
+    - basic variable is suitable for pivoting
+-}
 pivot :: Var -> Var -> Tableau -> Tableau
 pivot basic_var non_basic_var (Tableau basis bounds assignment) =
-  let from_just msg (Just a) = a
-      from_just msg Nothing = error msg
+  let 
+    from_just msg (Just a) = a
+    from_just msg Nothing = error msg
 
-      term =
-        from_just "Given variable is not actually in the basis ==> invalid pivot pair" $
-          M.lookup basic_var basis
+    expr =
+      from_just "Given variable is not actually in the basis ==> invalid pivot pair" $
+        M.lookup basic_var basis
 
-      equation =
-        from_just "Can't solve for non-basic variable ==> invalid pivot pair" $
-          solveFor (basic_var, term) non_basic_var
+    (_, expr') =
+      from_just "Can't solve for non-basic variable ==> invalid pivot pair" $
+        solveFor' (basic_var, expr) non_basic_var
 
-      basis' =
-        uncurry M.insert equation $
-          M.mapWithKey (\y term_y -> snd $ rewrite equation (y, term_y)) $
-            M.delete basic_var basis
+    basis' =
+        M.insert non_basic_var expr'
+      $ M.mapWithKey (\y expr_y -> snd $ rewrite (non_basic_var, expr') (y, expr_y))
+      $ M.delete basic_var basis
 
-      old_value_basic_var = assignment M.! basic_var
-      new_value_basic_var =
-        from_just "Basic variable doesn't have a bound so it's not actually violated" $
-          snd <$> M.lookup basic_var bounds
+    old_value_basic_var = assignment M.! basic_var
+    new_value_basic_var =
+      from_just "Basic variable doesn't have a bound so it's not actually violated" $
+        snd <$> M.lookup basic_var bounds
 
-      non_basic_var_coeff = term M.! non_basic_var
+    non_basic_var_coeff = expr M.! non_basic_var
 
-      old_value_non_basic_var = assignment M.! non_basic_var
-      new_value_non_basic_var = old_value_non_basic_var + (old_value_basic_var - new_value_basic_var) / non_basic_var_coeff
+    old_value_non_basic_var = assignment M.! non_basic_var
+    new_value_non_basic_var = old_value_non_basic_var + (old_value_basic_var - new_value_basic_var) / non_basic_var_coeff
 
-      assignment' =
-        M.insert non_basic_var new_value_non_basic_var $
-          M.insert basic_var new_value_basic_var assignment
+    assignment' =
+      M.insert non_basic_var new_value_non_basic_var $
+        M.insert basic_var new_value_basic_var assignment
 
-      assignment'' = M.union (eval assignment' <$> basis') assignment'
-   in Tableau basis' bounds assignment''
+    assignment'' = M.union (eval assignment' . AffineExpr 0 <$> basis') assignment'
+   in 
+    Tableau basis' bounds assignment''
 
 {-| 
   Tableau rows with only zero entries correspond to constant constraints 
@@ -261,9 +223,10 @@ eliminateZeroRows tableau@(Tableau basis bounds assignment) =
     else
       Nothing
 
--- |
---  TODO:
---    in case of UNSAT include explanation, i.e. minimal infeasible subset of constraints.
+{-|
+  TODO:
+    in case of UNSAT include explanation, i.e. minimal infeasible subset of constraints.
+-}
 simplex :: [Constraint] -> Maybe Assignment
 simplex constraints = do
   let go :: Tableau -> Tableau
@@ -275,11 +238,9 @@ simplex constraints = do
 
   tableau_0 <- eliminateZeroRows $ initTableau constraints
 
-  -- traceShowM $ getBasis tableau_0
-
   let tableau_n = go tableau_0
 
-      original_vars = varsIn constraints
+      original_vars = foldr (S.union . varsIn) S.empty constraints
       assignment = M.restrictKeys (getAssignment tableau_n) original_vars
   
   if null (violatedBasicVars tableau_n) then 
@@ -289,10 +250,22 @@ simplex constraints = do
 
 -----------------------------------------------------------
 
+-- SAT
 example1 =
   simplex
-    [ (M.fromList [(0, 1), (1, 1)], LessEquals, 3)
-    , (M.fromList [(0, 1), (1, 1)], GreaterEquals, 1)
-    , (M.fromList [(0, 1), (1, -1)], LessEquals, 3)
-    , (M.fromList [(0, 1), (1, -1)], GreaterEquals, 1)
+    [ (LessEquals,     AffineExpr (-3) $ M.fromList [(0, 1), (1, 1)])
+    , (GreaterEquals,  AffineExpr (-1) $ M.fromList [(0, 1), (1, 1)])
+    , (LessEquals,     AffineExpr (-3) $ M.fromList [(0, 1), (1, -1)])
+    , (GreaterEquals,  AffineExpr (-1) $ M.fromList [(0, 1), (1, -1)])
     ]
+
+-- SAT
+example2 = 
+  [ ( GreaterEquals
+    , AffineExpr
+       { getConstant = -100
+       , getCoeffMap = M.fromList [ ( 0 , -100) ]
+       }
+    )
+  ]
+

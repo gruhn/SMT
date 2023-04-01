@@ -1,111 +1,102 @@
-{-# LANGUAGE OverloadedLists #-}
-module Theory.LinearArithmatic.FourierMotzkin where
+module Theory.LinearArithmatic.FourierMotzkin (fourierMotzkin) where
 
-import Data.Ratio (Ratio)
-import qualified Data.Vector as V
-import Data.Maybe (fromMaybe)
+import Theory.LinearArithmatic.Constraint
+import qualified Data.IntMap.Strict as M
+import qualified Data.IntSet as S
 import Control.Monad (guard)
-import Data.List ((\\))
+import qualified Data.Vector as V
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List (partition)
+import Debug.Trace
 
--- [a,b,c,d] :<=> (a*x + b*y + c*z + d <= 0)
-type Constraint = V.Vector (Ratio Integer)
-
-constraints :: [Constraint]
-constraints =
-  [ [-2, 4,-5, 4 ]
-  , [-4, 5, 2, 1 ]
-  , [-5,-4, 0, 3 ]
-  , [ 3, 2,-4, 2 ]
-  , [ 1, 3, 4,-4 ]
-  , [ 4, 1, 1,-5 ] ]
-
-data Bound = Upper Constraint | Lower Constraint | UnBounded
-  deriving Show
-
-solveFor :: Int -> Constraint -> Bound
-solveFor i vs
-  | x > 0 = Upper $ V.imap (\j y -> if j == i then 0 else y/x) vs
-  | x < 0 = Lower $ V.imap (\j y -> if j == i then 0 else -y/x) vs
-  | otherwise = UnBounded
-  where
-    x = vs V.! i
-
-partitionByBound :: [Bound] -> ([Constraint], [Constraint])
-partitionByBound []     = ([], [])
-partitionByBound (b:bs) =
-  case b of
-    Lower l -> (l:ls, us)
-      where (ls, us) = partitionByBound bs
-    Upper u -> (ls, u:us)
-      where (ls, us) = partitionByBound bs
-    UnBounded -> partitionByBound bs
-
-hasNonZeroVars :: Constraint -> Bool
-hasNonZeroVars vs = foldl go 0 vs > 1
-  where
-    go sum x
-      | x == 0    = sum
-      | otherwise = sum + 1
-
-fourierMotzkin :: [Constraint] -> [Constraint]
-fourierMotzkin = go 0
-  where
-    go :: Int -> [Constraint] -> [Constraint]
-    go i constraints =
-      if any hasNonZeroVars constraints then
-        let bounds = solveFor i <$> constraints
-            (lowers, uppers) = partitionByBound bounds
-            new_constraints = [ V.zipWith (+) l u | l <- lowers, u <- uppers ]
-        in  new_constraints <> go (i+1) new_constraints
-      else
-        []
-
-linearDependent :: Constraint -> Constraint -> Bool
-linearDependent vs ws = coeff /= 0 && V.map (* coeff) vs == ws
-  where
-    div' x y
-      | y == 0    = 0
-      | otherwise = x/y
-
-    coeff =
-      fromMaybe 0 $ V.find (/=0) $ V.zipWith div' ws vs
-
-f :: [Constraint]
-f = do
-  let cs' = filter hasNonZeroVars $ fourierMotzkin constraints
-      cs = cs' -- <> constraints
-  c1 <- cs
-  guard (not (any (linearDependent c1) (cs \\ [c1])))
-  -- return (V.map realToFrac c1) -- , V.map realToFrac c2]
-  return c1 -- , V.map realToFrac c2]
-
-----------------------------------------------------
-
--- simplexStep :: 
-
-{-
-
-data Term = 
-    Var (Ratio Integer) Int    -- variable with rational coefficient
-  | Const (Ratio Integer)      -- constant rational value
-  | Add Term Term              -- sum of terms
-
-data Atom = Leq Term Term
-
-type Constraint' = V.Vector (Ratio Integer)
-
-variables :: Term -> [Int]
-variables (Var _ v) = [v]
-variables (Const _) = []
-variables (Add t1 t2) = 
-  variables t1 <> variables t2
-
-toConstraint :: Atom -> Constraint'
-toConstraint (Leq t1 t2) = V.generate vector_size go
-  where
-    vector_size = 1 + maximum (variables t1 <> variables t2)
-
-    go :: Int -> Ratio Integer
-    go i = undefined
-
+{-|
+  Trivial constraints have no variables and are satisfied, such as 0 < 1.
 -}
+isTrivial :: Constraint -> Bool
+isTrivial (rel, AffineExpr constant coeff_map) = 
+  S.null (M.keysSet coeff_map) && case rel of
+    LessThan      -> constant <  0
+    LessEquals    -> constant <= 0
+    Equals        -> constant == 0
+    GreaterEquals -> constant >= 0
+    GreaterThan   -> constant >  0
+
+eliminate :: Var -> [Constraint] -> [Constraint]
+eliminate var constraints =
+  let 
+    (constraints_with_var, constraints_without_var) = 
+      partition (var `appearsIn`) constraints
+
+    constraints_with_var_eliminated :: [Constraint]
+    constraints_with_var_eliminated = do
+      -- c1: x - 1 >= 0
+      -- c2: 2x + 4 <= 0
+      let constraints_with_var' =
+            mapMaybe (`solveFor` var) constraints_with_var
+
+      -- c1: x <= 1
+      (upper_bound_rel, AffineExpr ub_const ub_coeffs) <- constraints_with_var'
+      guard (upper_bound_rel == LessEquals)
+
+      -- c2: x >= -2
+      (lower_bound_rel, AffineExpr lb_const lb_coeffs) <- constraints_with_var'
+      guard (lower_bound_rel == GreaterEquals)
+
+      -- -2 <= x <= 1
+      -- -2     <= 1
+      -- -2 - 1 <= 0
+      return 
+        ( LessEquals
+        , AffineExpr 
+            (lb_const - ub_const)
+            (M.unionWith (-) lb_coeffs ub_coeffs) 
+        )
+  in
+   constraints_without_var <> constraints_with_var_eliminated
+
+fourierMotzkin :: [Constraint] -> Bool
+fourierMotzkin = go . fmap reject_zero_coeffs
+  where
+    reject_zero_coeffs :: Constraint -> Constraint
+    reject_zero_coeffs (rel, AffineExpr constant expr) = 
+      (rel, AffineExpr constant $ M.filter (/= 0) expr)
+
+    go :: [Constraint] -> Bool
+    go constraints
+      | not (all isTrivial constraints_no_vars) = False
+      | null constraints_with_vars = True
+      | otherwise = fourierMotzkin (eliminate next_var constraints_with_vars)
+      where
+        (constraints_no_vars, constraints_with_vars) = 
+          partition (S.null . varsIn) constraints
+
+        next_var = fst 
+          $ M.findMin 
+          $ getCoeffMap . snd 
+          $ head constraints_with_vars
+
+-- linearDependent :: Constraint -> Constraint -> Bool
+-- linearDependent vs ws = coeff /= 0 && V.map (* coeff) vs == ws
+--   where
+--     div' x y
+--       | y == 0    = 0
+--       | otherwise = x/y
+--     coeff =
+--       fromMaybe 0 $ V.find (/=0) $ V.zipWith div' ws vs 
+
+--------------------------------------
+
+-- SAT
+example1 = 
+  [ ( GreaterEquals
+    , AffineExpr 1 (M.singleton 0 (-1)) 
+    )
+  , ( GreaterEquals
+    , AffineExpr 0 (M.singleton 0 7)
+    )
+  ]
+
+example2 = 
+  [ (LessEquals, AffineExpr 0 $ M.singleton 0 (-1))
+  , (GreaterEquals, AffineExpr 1 $ M.singleton 0 (-1))
+  ]

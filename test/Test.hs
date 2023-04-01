@@ -20,8 +20,10 @@ main = defaultMain $ checkParallel <$>
       [ ("Intervals never widen", prop_intervals_never_widen)
       , ("No roots are lost", prop_no_roots_are_lost)
       ]
-  , Group "Theory - Linear Arithmatic"
-    [ ("Simplex method is sound", withTests 1000 $ prop_simplex_sound)
+  , Group "Linear Arithmatic"
+    [ ("Simplex is sound", withTests 1000 $ prop_simplex_sound)
+    -- , ("Fourier-Motzkin is sound" prop_fourier_motzkin_sound)
+    , ("Fourier-Motzkin equivalent to Simplex", prop_fourier_motzkin_equiv_simplex)
     ]
   ]
 
@@ -31,3 +33,4 @@ main = defaultMain $ checkParallel <$>
 -- main :: IO ()
 -- main = do
 --   recheckAt (Seed 6028160336680363614 11864191702326251993) "1667:" prop_simplex_sound
+--   recheckAt (Seed 7297858649592928895 18067415188796872511) "297:" Simplex is sound

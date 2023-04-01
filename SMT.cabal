@@ -17,6 +17,7 @@ library
                     , Theory.BitVectors
                     , Theory.UninterpretedFunctions.Lazy
                     , Theory.UninterpretedFunctions.Eager
+                    , Theory.LinearArithmatic.Constraint
                     , Theory.LinearArithmatic.FourierMotzkin
                     , Theory.LinearArithmatic.Simplex
                     , Theory.LinearArithmatic.BranchAndBound
