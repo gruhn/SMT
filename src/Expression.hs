@@ -8,6 +8,10 @@ module Expression
   , eliminateConstants
   , subExpressions
   , fromString
+  , (/\)
+  , (\/)
+  , (==>)
+  , (<==>)
   ) where
 
 import           Control.Applicative            ( many
@@ -233,3 +237,23 @@ instance Show (Expr String) where
       if precendence child_expr <= precendence parent_expr
         then "(" <> show child_expr <> ")"
         else show child_expr
+
+infixl 5 /\
+
+(/\) :: Expr a -> Expr a -> Expr a
+(/\) = And
+
+infixl 5 \/
+
+(\/) :: Expr a -> Expr a -> Expr a
+(\/) = Or
+
+infixr 4 ==>
+
+(==>) :: Expr a -> Expr a -> Expr a
+(==>) expr expr' = Not expr `Or` expr'
+
+infixl 3 <==>
+
+(<==>) :: Expr a -> Expr a -> Expr a
+(<==>) expr expr' = expr ==> expr' /\ expr' ==> expr

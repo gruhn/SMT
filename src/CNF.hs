@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 module CNF where
 
-import Expression (Expr (..), negationNormalForm, eliminateConstants)
+import Expression (Expr (..), negationNormalForm, eliminateConstants, (<==>))
 import qualified Data.Set as S
 import Utils (fixpoint)
 import Data.Foldable (toList)
@@ -71,9 +71,9 @@ tseytin = foldr And (aux_var 1) . snd . go 1 . eliminateConstants
       T       -> (i, [T])
       F       -> (i, [F])
       Atom at -> (i, [var at])
-      Not (Atom at) -> (i, [aux_var i `Equiv` Not (var at)])
+      Not (Atom at) -> (i, [aux_var i <==> Not (var at)])
       Not ex -> 
-        let eq = aux_var i `Equiv` Not (aux_var $ i+1)
+        let eq = aux_var i <==> Not (aux_var $ i+1)
             (j, sub_ex) = go (i+1) ex
         in  (j, eq : sub_ex)
       And ex1 ex2   -> go_binary i And ex1 ex2
@@ -88,18 +88,18 @@ tseytin = foldr And (aux_var 1) . snd . go 1 . eliminateConstants
               -> (Int, [Expr (WithAux a)])
     go_binary i op ex_l ex_r = case (ex_l, ex_r) of
       (Atom at1, Atom at2) ->
-        let eq = aux_var i `Equiv` op (var at1) (var at2)
+        let eq = aux_var i <==> op (var at1) (var at2)
         in  (i, [eq])
       (ex1, Atom at2) -> 
-        let eq = aux_var i `Equiv` op (aux_var $ i+1) (var at2)
+        let eq = aux_var i <==> op (aux_var $ i+1) (var at2)
             (j, sub_ex1) = go (i+1) ex1
         in (j, eq : sub_ex1)
       (Atom at1, ex2) -> 
-        let eq = aux_var i `Equiv` op (var at1) (aux_var $ i+1)
+        let eq = aux_var i <==> op (var at1) (aux_var $ i+1)
             (j, sub_ex2) = go (i+1) ex2
         in  (j, eq : sub_ex2)
       (ex1, ex2) -> 
-        let eq = aux_var i `Equiv` op (aux_var $ i+1) (aux_var $ j+1)
+        let eq = aux_var i <==> op (aux_var $ i+1) (aux_var $ j+1)
             (j, sub_ex1) = go (i+1) ex1
             (k, sub_ex2) = go (j+1) ex2
         in  (k, eq : sub_ex1 ++ sub_ex2)
