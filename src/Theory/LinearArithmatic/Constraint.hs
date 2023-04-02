@@ -6,6 +6,7 @@ import Control.Monad (guard)
 import qualified Data.IntMap.Merge.Lazy as MM
 import Data.List (intercalate)
 import Data.Ratio (denominator, numerator)
+import Debug.Trace
 
 type Var = Int
 
@@ -26,9 +27,18 @@ type Assignment = M.IntMap Rational
 -- |
 -- For example, constraint such as `3x + y + 3 <= 0` is represented as:
 --
---     (LessEquals, AffineExpr 3 (3x+y))
+--     (AffineExpr 3 (3x+y), LessEquals)
 -- 
-type Constraint = (ConstraintRelation, AffineExpr)
+type Constraint = (AffineExpr, ConstraintRelation) 
+
+{-|
+  Remove variables with zero coefficient.
+  TODO: ensure that constraints are always normalized.
+-}
+normalize :: Constraint -> Constraint
+normalize (AffineExpr constant expr, rel) = 
+  (AffineExpr constant $ M.filter (/= 0) expr, rel)
+
 
 -- | Map from variable IDs to coefficients 
 type LinearExpr = M.IntMap Rational
@@ -60,10 +70,13 @@ instance Show AffineExpr where
       intercalate " + " (fmap show_var (M.toList coeff_map) ++ [show_signed constant])
 
 varsIn :: Constraint -> S.IntSet
-varsIn (_, AffineExpr _ coeff_map) = M.keysSet coeff_map
+varsIn (AffineExpr _ coeff_map, _) = M.keysSet coeff_map
 
 appearsIn :: Var -> Constraint -> Bool
-appearsIn var = M.member var . getCoeffMap . snd
+appearsIn var = M.member var . getCoeffMap . fst
+
+modifyConstant :: (Rational -> Rational) -> AffineExpr -> AffineExpr
+modifyConstant f (AffineExpr constant coeffs) = AffineExpr (f constant) coeffs
 
 {-|
   Solve a constraint for a variable. For example solving
@@ -78,7 +91,7 @@ appearsIn var = M.member var . getCoeffMap . snd
   expression or the coefficient is zero. 
 -}
 solveFor :: Constraint -> Var -> Maybe Constraint
-solveFor (rel, AffineExpr constant coeffs) x = do
+solveFor (AffineExpr constant coeffs, rel) x = do
   coeff_of_x <- M.lookup x coeffs
   guard (coeff_of_x /= 0)
 
@@ -86,7 +99,7 @@ solveFor (rel, AffineExpr constant coeffs) x = do
 
   return 
     -- flip the relation:             x >= -10/3y + 1/3
-    $ (rel', )
+    $ (, rel')
     -- also divide constant term:     x <= -10/3y + 1/3
     $ AffineExpr (- constant / coeff_of_x)
     -- divide coefficients:           x <= -10/3y - 1
@@ -94,13 +107,52 @@ solveFor (rel, AffineExpr constant coeffs) x = do
     -- get x on the other side:     -3x <= 10y - 1
     $ M.delete x coeffs
 
-eval :: Assignment -> AffineExpr -> Rational
-eval assignment (AffineExpr constant coeff_map) =
-  (constant +) $ sum $
-    MM.merge
-      MM.dropMissing
-      MM.dropMissing
-      (MM.zipWithMatched (const (*)))
-      assignment
-      coeff_map
+substitute :: Assignment -> AffineExpr -> AffineExpr
+substitute partial_assignment (AffineExpr constant coeff_map) = 
+  let 
+    constant' = (constant +) $ sum $
+      MM.merge
+        MM.dropMissing
+        MM.dropMissing
+        (MM.zipWithMatched (const (*)))
+        partial_assignment
+        coeff_map
 
+    coeff_map' = coeff_map `M.withoutKeys` M.keysSet partial_assignment
+  in 
+    AffineExpr constant' coeff_map'
+
+{-|
+  Evaluate an expression by substituting all variables 
+  using the given assignment. Returns `Nothing` if the 
+  assignment is partial.
+-}
+eval :: Assignment -> AffineExpr -> Maybe Rational
+eval assignment expr
+  | M.null coeff_map = Just constant
+  | otherwise        = traceShow coeff_map Nothing
+  where
+    AffineExpr constant coeff_map = substitute assignment expr
+
+
+-- linearDependent :: Constraint -> Constraint -> Bool
+-- linearDependent vs ws = coeff /= 0 && V.map (* coeff) vs == ws
+--   where
+--     div' x y
+--       | y == 0    = 0
+--       | otherwise = x/y
+--     coeff =
+--       fromMaybe 0 $ V.find (/=0) $ V.zipWith div' ws vs 
+
+{-|
+  Checks if the assignment satisfies the constraints.
+-}
+isModel :: Assignment -> Constraint -> Bool
+isModel assignment (affine_expr, rel) = 
+  case (eval assignment affine_expr, rel) of 
+    (Just value, LessThan     ) -> value <  0
+    (Just value, LessEquals   ) -> value <= 0
+    (Just value, Equals       ) -> value == 0
+    (Just value, GreaterEquals) -> value >= 0
+    (Just value, GreaterThan  ) -> value >  0
+    (Nothing   , _            ) -> False

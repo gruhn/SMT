@@ -35,7 +35,7 @@ initTableau constraints =
     fresh_vars = [max_original_var + 1 ..]
 
     (basis, bounds) = bimap M.fromList M.fromList $ unzip $ do
-      (slack_var, (relation, affine_expr)) <- zip fresh_vars constraints
+      (slack_var, (affine_expr, relation)) <- zip fresh_vars constraints
 
       let bound_type =
             case relation of
@@ -152,8 +152,8 @@ rewrite (x, expr_x) (y, expr_y) =
 -}
 solveFor' :: Equation -> Var -> Maybe Equation
 solveFor' (x, expr_x) y = do
-  let constraint = (Equals, AffineExpr 0 $ M.insert x (-1) expr_x)
-  (_, AffineExpr _ expr_y) <- solveFor constraint y
+  let constraint = (AffineExpr 0 $ M.insert x (-1) expr_x, Equals)
+  (AffineExpr _ expr_y, _) <- solveFor constraint y
   return (y, expr_y)
 
 {-|
@@ -193,10 +193,14 @@ pivot basic_var non_basic_var (Tableau basis bounds assignment) =
     new_value_non_basic_var = old_value_non_basic_var + (old_value_basic_var - new_value_basic_var) / non_basic_var_coeff
 
     assignment' =
-      M.insert non_basic_var new_value_non_basic_var $
-        M.insert basic_var new_value_basic_var assignment
+        M.insert non_basic_var new_value_non_basic_var 
+      $ M.insert basic_var new_value_basic_var assignment
 
-    assignment'' = M.union (eval assignment' . AffineExpr 0 <$> basis') assignment'
+    assignment'' = 
+      M.union 
+        ( from_just "Can't evaluate expression, because assignment is partial" 
+            $ traverse (eval assignment' . AffineExpr 0) basis' )
+        assignment' 
    in 
     Tableau basis' bounds assignment''
 
@@ -253,19 +257,19 @@ simplex constraints = do
 -- SAT
 example1 =
   simplex
-    [ (LessEquals,     AffineExpr (-3) $ M.fromList [(0, 1), (1, 1)])
-    , (GreaterEquals,  AffineExpr (-1) $ M.fromList [(0, 1), (1, 1)])
-    , (LessEquals,     AffineExpr (-3) $ M.fromList [(0, 1), (1, -1)])
-    , (GreaterEquals,  AffineExpr (-1) $ M.fromList [(0, 1), (1, -1)])
+    [ (AffineExpr (-3) $ M.fromList [(0, 1), (1, 1)], LessEquals)
+    , (AffineExpr (-1) $ M.fromList [(0, 1), (1, 1)], GreaterEquals)
+    , (AffineExpr (-3) $ M.fromList [(0, 1), (1, -1)], LessEquals)
+    , (AffineExpr (-1) $ M.fromList [(0, 1), (1, -1)], GreaterEquals)
     ]
 
 -- SAT
 example2 = 
-  [ ( GreaterEquals
-    , AffineExpr
+  [ ( AffineExpr
        { getConstant = -100
        , getCoeffMap = M.fromList [ ( 0 , -100) ]
        }
+    , GreaterEquals
     )
   ]
 

@@ -1,6 +1,6 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module TestLinearArithmatic 
   ( prop_simplex_sound
+  , prop_fourier_motzkin_sound
   , prop_fourier_motzkin_equiv_simplex  
   ) where
 
@@ -14,25 +14,7 @@ import Theory.LinearArithmatic.Constraint
 import Theory.LinearArithmatic.FourierMotzkin (fourierMotzkin)
 import Data.Maybe (isJust)
 
-isModel :: Assignment -> Constraint -> Bool
-isModel assignment (rel, affine_expr) = 
-  case rel of 
-    LessThan      -> eval assignment affine_expr < 0
-    LessEquals    -> eval assignment affine_expr <= 0
-    Equals        -> eval assignment affine_expr == 0
-    GreaterEquals -> eval assignment affine_expr >= 0
-    GreaterThan   -> eval assignment affine_expr > 0
-
 -- TODO: generate more representative constraint sets 
--- newtype Constraint' a = Constraint' (Constraint a)
-
--- instance Arbitrary a => Arbitrary (Constraint' a) where
---   arbitrary = do
---     var <- chooseInt (0, 10)
---     coeff <- arbitrary
---     _
---     return $ Constraint'
-
 genConstraints :: Int -> Gen [Constraint]
 genConstraints max_constraints =  Gen.list (Range.linear 1 max_constraints) $ do
   linear_expr <- fmap M.fromList $ Gen.list (Range.linear 0 10) $ do 
@@ -47,7 +29,8 @@ genConstraints max_constraints =  Gen.list (Range.linear 1 max_constraints) $ do
   constant <- toRational <$> Gen.int (Range.linearFrom 0 (-100) 100)
   -- constant <- Gen.float (Range.linearFrac (-100.0) 100.0)
 
-  return (rel, AffineExpr constant linear_expr)
+  -- TODO: make sure that constraints are always normalized by construction.  
+  return $ normalize (AffineExpr constant linear_expr, rel)
 
 prop_simplex_sound :: Property
 prop_simplex_sound = property $ do
@@ -64,12 +47,17 @@ prop_simplex_sound = property $ do
 -- TODO:
 -- invariant: assignment always satisfies `A*x = 0`
 
--- TODO
--- prop_fourier_motzkin_sound :: Property
--- prop_fourier_motzkin_sound = _
+prop_fourier_motzkin_sound :: Property
+prop_fourier_motzkin_sound = property $ do
+  constraints <- forAll (genConstraints 10)
+  case fourierMotzkin constraints of
+    Nothing         -> success
+    Just assignment -> do 
+      annotate $ show assignment 
+      assert $ all (assignment `isModel`) constraints
 
 -- TODO: gets "stuck" on some inputs. Too slow? Memory leak?
 prop_fourier_motzkin_equiv_simplex :: Property
 prop_fourier_motzkin_equiv_simplex = property $ do
   constraints <- forAll (genConstraints 10)
-  fourierMotzkin constraints === isJust (simplex constraints)
+  isJust (fourierMotzkin constraints) === isJust (simplex constraints)

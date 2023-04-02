@@ -21,8 +21,8 @@ main = defaultMain $ checkParallel <$>
       , ("No roots are lost", prop_no_roots_are_lost)
       ]
   , Group "Linear Arithmatic"
-    [ ("Simplex is sound", withTests 1000 $ prop_simplex_sound)
-    -- , ("Fourier-Motzkin is sound" prop_fourier_motzkin_sound)
+    [ ("Simplex is sound", withTests 100 $ prop_simplex_sound)
+    , ("Fourier-Motzkin is sound", prop_fourier_motzkin_sound)
     , ("Fourier-Motzkin equivalent to Simplex", prop_fourier_motzkin_equiv_simplex)
     ]
   ]

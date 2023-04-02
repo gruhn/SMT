@@ -3,6 +3,8 @@ import Data.Maybe (isJust, catMaybes)
 import Data.Foldable (toList, concatMap)
 import qualified Data.Set as S
 import Data.Set (Set)
+import Control.Exception (assert)
+import Data.List (uncons)
 
 fixpoint :: Eq a => (a -> a) -> a -> a
 fixpoint f a
