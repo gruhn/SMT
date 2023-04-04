@@ -11,26 +11,27 @@ import Theory.NonLinearRealArithmatic.Expr (Expr (..), Var, BinaryOp (..), subst
 import Theory.NonLinearRealArithmatic.Polynomial
 import Control.Arrow ((&&&))
 
--- |
--- The frame of a polynomial is a set of points, obtained from the 
--- exponents of the individual monomials. E.g. for a polynomial over 
--- variables x,y like 
--- 
---   y + 2xy^3 - 3x^2y^2 - x^3 - 4x^4y^4
--- 
--- we get the following points 
---
---   (0,1), (1,3), (2,2), (4,4) 
---
--- The points are then partitioned by the sign of the coefficient.
---
---   pos: (0,1) 
---   neg: (1,3), (2,2), (4,4) 
--- 
--- Computing the frame is the basis for identifiying a term that
--- dominates the polynomial for sufficently large variables values.
--- That in turn is sufficient to find solutions to inequality 
--- constraints.
+{-|
+  The frame of a polynomial is a set of points, obtained from the 
+  exponents of the individual monomials. E.g. for a polynomial over 
+  variables x,y like 
+
+   y + 2xy^3 - 3x^2y^2 - x^3 - 4x^4y^4
+
+  we get the following points 
+
+   (0,1), (1,3), (2,2), (4,4) 
+
+  The points are then partitioned by the sign of the coefficient.
+
+   pos: (0,1) 
+   neg: (1,3), (2,2), (4,4) 
+
+  Computing the frame is the basis for identifiying a term that
+  dominates the polynomial for sufficently large variables values.
+  That in turn is sufficient to find solutions to inequality 
+  constraints.
+-}
 frame :: (Ord a, Num a) => Polynomial a -> ([Monomial], [Monomial])
 frame polynomial = undefined -- TODO
   where
@@ -144,7 +145,6 @@ subtropical (Equals, polynomial) =
 
     go :: Assignment a -> Polynomial a -> Maybe (Assignment a)
     go neg_sol polynomial = intermediateRoot polynomial neg_sol <$> positiveSolution polynomial
-
   in
     case eval one polynomial `compare` 0 of
       LT -> go one polynomial

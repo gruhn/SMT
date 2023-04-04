@@ -153,7 +153,7 @@ rewrite (x, expr_x) (y, expr_y) =
 solveFor' :: Equation -> Var -> Maybe Equation
 solveFor' (x, expr_x) y = do
   let constraint = (AffineExpr 0 $ M.insert x (-1) expr_x, Equals)
-  (AffineExpr _ expr_y, _) <- solveFor constraint y
+  (_, _, AffineExpr _ expr_y) <- solveFor constraint y
   return (y, expr_y)
 
 {-|

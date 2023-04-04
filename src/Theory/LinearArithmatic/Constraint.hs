@@ -90,7 +90,7 @@ modifyConstant f (AffineExpr constant coeffs) = AffineExpr (f constant) coeffs
   Returns `Nothing`, if the given variable does not appear in the 
   expression or the coefficient is zero. 
 -}
-solveFor :: Constraint -> Var -> Maybe Constraint
+solveFor :: Constraint -> Var -> Maybe (Var, ConstraintRelation, AffineExpr)
 solveFor (AffineExpr constant coeffs, rel) x = do
   coeff_of_x <- M.lookup x coeffs
   guard (coeff_of_x /= 0)
@@ -99,7 +99,7 @@ solveFor (AffineExpr constant coeffs, rel) x = do
 
   return 
     -- flip the relation:             x >= -10/3y + 1/3
-    $ (, rel')
+    $ (x, rel', )
     -- also divide constant term:     x <= -10/3y + 1/3
     $ AffineExpr (- constant / coeff_of_x)
     -- divide coefficients:           x <= -10/3y - 1
@@ -156,3 +156,11 @@ isModel assignment (affine_expr, rel) =
     (Just value, GreaterEquals) -> value >= 0
     (Just value, GreaterThan  ) -> value >  0
     (Nothing   , _            ) -> False
+
+-- | True iff constraint contains no free variables
+isGround :: Constraint -> Bool
+isGround = M.null . getCoeffMap . fst 
+
+-- | True iff constraint contains at least one free variable.
+isOpen :: Constraint -> Bool
+isOpen = not . isGround

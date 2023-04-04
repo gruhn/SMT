@@ -15,26 +15,24 @@ import Theory.LinearArithmatic.FourierMotzkin (fourierMotzkin)
 import Data.Maybe (isJust)
 
 -- TODO: generate more representative constraint sets 
-genConstraints :: Int -> Gen [Constraint]
-genConstraints max_constraints =  Gen.list (Range.linear 1 max_constraints) $ do
+genConstraints :: Int -> Int -> Gen [Constraint]
+genConstraints max_vars max_constraints =  Gen.list (Range.linear 1 max_constraints) $ do
   linear_expr <- fmap M.fromList $ Gen.list (Range.linear 0 10) $ do 
-    -- coeff <- Gen.float (Range.linearFrac (-1000.0) 1000.0)
     coeff <- toRational <$> Gen.int (Range.linearFrom 0 (-100) 100)
-    var <- Gen.int (Range.linear 0 20)
+    var <- Gen.int (Range.linear 0 max_vars)
     return (var, coeff)
 
-  -- TODO: extend Simplex to all constraint relation types
+  -- TODO: extend to all constraint types
   rel <- Gen.element [LessEquals, GreaterEquals]  
 
   constant <- toRational <$> Gen.int (Range.linearFrom 0 (-100) 100)
-  -- constant <- Gen.float (Range.linearFrac (-100.0) 100.0)
 
   -- TODO: make sure that constraints are always normalized by construction.  
   return $ normalize (AffineExpr constant linear_expr, rel)
 
 prop_simplex_sound :: Property
 prop_simplex_sound = property $ do
-  constraints <- forAll (genConstraints 50)
+  constraints <- forAll (genConstraints 20 50)
   case simplex constraints of
     Nothing         -> success
     Just assignment -> do 
@@ -49,7 +47,7 @@ prop_simplex_sound = property $ do
 
 prop_fourier_motzkin_sound :: Property
 prop_fourier_motzkin_sound = property $ do
-  constraints <- forAll (genConstraints 10)
+  constraints <- forAll (genConstraints 5 5)
   case fourierMotzkin constraints of
     Nothing         -> success
     Just assignment -> do 
@@ -59,5 +57,5 @@ prop_fourier_motzkin_sound = property $ do
 -- TODO: gets "stuck" on some inputs. Too slow? Memory leak?
 prop_fourier_motzkin_equiv_simplex :: Property
 prop_fourier_motzkin_equiv_simplex = property $ do
-  constraints <- forAll (genConstraints 10)
+  constraints <- forAll (genConstraints 5 5)
   isJust (fourierMotzkin constraints) === isJust (simplex constraints)

@@ -20,19 +20,19 @@ import Data.Foldable (asum)
 import Control.Applicative ((<|>))
 import Utils (fixpoint)
 
-partitionByBound :: [Constraint] -> Var -> ([Constraint], [Constraint], [Constraint])
-partitionByBound constraints var = 
+partitionByBound :: [Constraint] -> Var -> ([AffineExpr], [AffineExpr], [Constraint])
+partitionByBound constraints var =
   let
-    go :: Constraint -> ([Constraint], [Constraint], [Constraint])
+    go :: Constraint -> ([AffineExpr], [AffineExpr], [Constraint])
     go constraint = 
       case constraint `solveFor` var of
         Nothing -> -- constraint does not include var
           ([], [], [constraint])
-        Just c@(expr, GreaterEquals) -> -- lower bound
-          ([c], [], [])
-        Just c@(expr, LessEquals) -> -- upper bound
-          ([], [c], [])
-        Just (expr, not_supported_yet) -> 
+        Just (_, GreaterEquals, lower_bound) ->
+          ([lower_bound], [], [])
+        Just (_, LessEquals, upper_bound) ->
+          ([], [upper_bound], [])
+        Just not_supported_yet -> 
           error "TODO: support all constraint types in Fourier Motzkin"
 
     combine (as1, as2, as3) (bs1, bs2, bs3) =
@@ -67,10 +67,10 @@ eliminate constraints = listToMaybe $ do
 
   let constraints_with_var_eliminated :: [Constraint]
       constraints_with_var_eliminated = do
-        AffineExpr ub_const ub_coeffs <- fst <$> upper_bounds
-        AffineExpr lb_const lb_coeffs <- fst <$> lower_bounds
+        AffineExpr ub_const ub_coeffs <- upper_bounds
+        AffineExpr lb_const lb_coeffs <- lower_bounds
         let left_hand_side = AffineExpr (lb_const - ub_const) (M.unionWith (+) lb_coeffs $ negate <$> ub_coeffs)
-        return (left_hand_side, LessEquals)
+        return $ normalize $ (left_hand_side, LessEquals)
 
   return (var, constraints_without_var ++ constraints_with_var_eliminated)
 
@@ -79,44 +79,42 @@ fourierMotzkin = go . fmap normalize
   where
     go :: [Constraint] -> Maybe Assignment
     go constraints = do
-      let (constraints_no_vars, constraints_with_vars) = 
-            partition (S.null . varsIn) constraints
+      let (constraints_ground, constraints_open) = partition isGround constraints
 
-      -- otherwise `constraints_no_vars` contains a constraint like 1 <= 0
-      guard $ all (M.empty `isModel`) constraints_no_vars
+      -- otherwise `constraints_ground` contains a constraint like 1 <= 0
+      guard $ all (M.empty `isModel`) constraints_ground
 
-      if null constraints_with_vars then
+      if null constraints_open then
         Just M.empty
       else 
-        case eliminate constraints_with_vars of
-          Nothing -> do
-            let unassigned_vars = S.unions $ varsIn <$> constraints_with_vars
-                initial_assignment = M.fromSet (const 0) unassigned_vars 
-            return $ fixpoint (`refine` constraints_with_vars) initial_assignment
+        case eliminate constraints_open of
+          Nothing ->
+            return $ fixpoint (`refine` constraints_open) M.empty
 
           Just (next_var, constraints_without_var) -> do
             partial_assignment <- go constraints_without_var
-            let constraints' = first (substitute partial_assignment) <$> constraints_with_vars
+            let constraints' = first (substitute partial_assignment) <$> constraints_open
             return $ refine (M.insert next_var 0 partial_assignment) constraints'
 
     refine_with :: Constraint -> Var -> Assignment -> Assignment
-    refine_with (expr, rel) var assignment = 
+    refine_with (expr, rel) var assignment =
       let 
-        current_value = assignment M.! var
-        assignment' = M.delete var assignment 
+        old_value = M.findWithDefault 0 var assignment
+        assignment_no_value = M.delete var assignment
+        assignment_old_value = M.insert var old_value assignment
       in
-        case (substitute assignment' expr, rel) `solveFor` var of
-          Nothing -> assignment
-          Just (AffineExpr new_value _, LessEquals) -> 
-            if new_value < current_value then
+        case (substitute assignment_no_value expr, rel) `solveFor` var of
+          Nothing -> assignment_old_value
+          Just (_, LessEquals, AffineExpr new_value _) -> 
+            if new_value < old_value then
               M.insert var new_value assignment
             else
-              assignment
-          Just (AffineExpr new_value _, GreaterEquals) -> 
-            if new_value > current_value then
+              assignment_old_value
+          Just (_, GreaterEquals, AffineExpr new_value _) -> 
+            if new_value > old_value then
               M.insert var new_value assignment
             else
-              assignment
+              assignment_old_value
 
     refine :: Assignment -> [Constraint] -> Assignment
     refine = foldr accum
@@ -125,12 +123,11 @@ fourierMotzkin = go . fmap normalize
         accum constraint assignment = 
           foldr (refine_with constraint) assignment (S.toList $ varsIn constraint)    
 
----------------------------
+----
 
-example1 =
-  [ (AffineExpr 0 $ M.fromList [ (0, -1), (1, -1) ], LessEquals)
-  , (AffineExpr 1 $ M.fromList [ (0, 1) ], LessEquals) ]
-
-example2 = 
-  [ (AffineExpr 0 $ M.singleton 0 (-1), LessEquals)
-  , (AffineExpr 1 $ M.singleton 0 1, LessEquals) ]
+example =
+  [ (AffineExpr (-1) $ M.singleton 3 1, GreaterEquals )
+  , (AffineExpr 0 $ M.fromList [ (0, 65), (3, -26)], LessEquals )
+  , (AffineExpr 0 $ M.singleton 0 (-1), GreaterEquals )
+  , (AffineExpr 0 $ M.fromList [ (0, 5), (1, 1), (3, -2) ], GreaterEquals )
+  ]
