@@ -20,17 +20,12 @@ main = defaultMain $ checkParallel <$>
       [ ("Intervals never widen", prop_intervals_never_widen)
       , ("No roots are lost", prop_no_roots_are_lost)
       ]
-  , Group "Linear Arithmatic"
-    [ ("Simplex is sound", withTests 100 $ prop_simplex_sound)
-    , ("Fourier-Motzkin is sound", prop_fourier_motzkin_sound)
+  , Group "Simplex / Fourier-Motzkin"
+    [ ("Fourier-Motzkin is sound", prop_fourier_motzkin_sound)
     , ("Fourier-Motzkin equivalent to Simplex", prop_fourier_motzkin_equiv_simplex)
+    , ("Invariant: non-basic variables always satisfy their bounds", prop_invariant_non_basic_vars_satisfy_bounds)
+    , ("Invariant: assignment matches basis evaluation", prop_invariant_assignment_matches_basis_evaluation)
+    , ("Simplex does not cycle", withTests 10000 $ prop_simplex_no_cycle)
+    , ("Simplex is sound", withTests 10000 $ prop_simplex_sound)
     ]
   ]
-
--- TODO: Simplex seems still incorrect. Some runs spin forever/consume a 
--- lot of memory, e.g:
-
--- main :: IO ()
--- main = do
---   recheckAt (Seed 6028160336680363614 11864191702326251993) "1667:" prop_simplex_sound
---   recheckAt (Seed 7297858649592928895 18067415188796872511) "297:" Simplex is sound
