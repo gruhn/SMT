@@ -3,31 +3,77 @@
   to sets of linear constraints. All coefficients, bounds, and solutions are of type 
   `Rational` to avoid having to deal with numeric issues at the cost of performance.
 -}
-module Theory.LinearArithmatic.Simplex (simplex) where
+module Theory.LinearArithmatic.Simplex 
+  ( simplex
+  , simplexSteps
+  , initTableau
+  , Tableau(..)
+  , isBoundViolated
+  ) where
 
 import Control.Monad (guard)
 import Data.Bifunctor (bimap)
 import qualified Data.IntMap.Strict as M
 import qualified Data.IntMap.Merge.Strict as MM
 import qualified Data.IntSet as S
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, isJust)
 import Theory.LinearArithmatic.Constraint
 import Debug.Trace
+import Data.Foldable (find)
+import Data.List (intercalate)
+import Data.Ratio (numerator, denominator)
 
 data BoundType = UpperBound | LowerBound
-  deriving (Show)
+  deriving (Show, Eq)
 
 data Tableau = Tableau
-  { getBasis :: M.IntMap LinearExpr,
-    getBounds :: M.IntMap (BoundType, Rational),
-    getAssignment :: Assignment
+  { getBasis :: M.IntMap LinearExpr
+  , getBounds :: M.IntMap (BoundType, Rational)
+  , getAssignment :: Assignment
   }
-  deriving (Show)
+
+instance Show Tableau where
+  show (Tableau basis bounds assignment) = 
+    let
+      show_row (var, linear_expr) =
+        "x" ++ show var ++ " = " ++ show (AffineExpr 0 linear_expr)
+
+      show_ratio ratio =
+        show (numerator ratio) ++
+        if denominator ratio == 1 then
+          ""
+        else 
+          "/" ++ show (denominator ratio)
+
+      show_signed ratio =
+        if ratio < 0 then
+          "(" ++ show_ratio ratio ++ ")"
+        else 
+          show_ratio ratio
+
+      show_bound (Just (UpperBound, bound_value)) = 
+        " <= " ++ show_signed bound_value
+      show_bound (Just (LowerBound, bound_value)) = 
+        " >= " ++ show_signed bound_value
+      show_bound Nothing = ""
+
+      show_value (var, value) = 
+           "x" 
+        ++ show var 
+        ++ ": " 
+        ++ show_signed value
+        ++ show_bound (M.lookup var bounds)
+    in 
+      intercalate "\n"
+        $  "----------------"
+        :  (show_row <$> M.toList basis)
+        ++ ""
+        :  (show_value <$> M.toList assignment)
 
 {-|
   Transform constraints to "General From" and initialize Simplex tableau.
 -}
-initTableau :: [Constraint] -> Tableau
+initTableau :: [Constraint] -> Maybe Tableau
 initTableau constraints =
   let 
     original_vars = foldr (S.union . varsIn) S.empty constraints
@@ -56,7 +102,7 @@ initTableau constraints =
         zip (S.toList original_vars ++ slack_vars) $
           repeat 0
    in 
-    Tableau basis bounds assignment
+    eliminateZeroRows $ Tableau basis bounds assignment
 
 data BoundViolation = MustIncrease | MustDecrease
 
@@ -76,9 +122,11 @@ boundViolation (Tableau basis bounds assignment) var = do
       else
         Just MustIncrease
 
+isBoundViolated :: Tableau -> Var -> Bool
+isBoundViolated tableau var = isJust $ boundViolation tableau var
+
 violatedBasicVars :: Tableau -> [(Var, BoundViolation)]
 violatedBasicVars tableau = do
-  -- Following "Blend's Rule" by enumerating variables in ascending order.
   basic_var <- M.keys $ getBasis tableau
   case boundViolation tableau basic_var of
     Nothing -> []
@@ -86,7 +134,9 @@ violatedBasicVars tableau = do
 
 pivotCandidates :: Tableau -> [(Var, Var)]
 pivotCandidates tableau@(Tableau basis bounds assignment) = do
-  (basic_var, violation) <- violatedBasicVars tableau
+  -- Following "Bland's Rule" by enumerating variables in ascending order.
+  -- Only consider the first violated basic variable. 
+  (basic_var, violation) <- take 1 $ violatedBasicVars tableau
 
   let expr = basis M.! basic_var
       non_basis = M.keysSet assignment S.\\ M.keysSet basis
@@ -94,32 +144,56 @@ pivotCandidates tableau@(Tableau basis bounds assignment) = do
   non_basic_var <- S.toAscList non_basis
 
   let non_basic_var_coeff = M.findWithDefault 0 non_basic_var expr
-      non_basic_bound_type = fst <$> M.lookup non_basic_var bounds
+      non_basic_var_current_value = assignment M.! non_basic_var
+
+      non_basic_var_lower_bound = do
+        (bound_type, bound_value) <- M.lookup non_basic_var bounds
+        guard $ bound_type == LowerBound
+        return bound_value
+
+      non_basic_var_upper_bound = do
+        (bound_type, bound_value) <- M.lookup non_basic_var bounds
+        guard $ bound_type == UpperBound
+        return bound_value
+
       can_pivot =
-        case (non_basic_bound_type, signum non_basic_var_coeff, violation) of
+        case (signum non_basic_var_coeff, violation) of
           -- If the coefficient of the non basic variable is 0, then the value of the variable
           -- is not affected by pivoting, so it can't resolve the bound violation.
-          (_, 0, _) -> False
-          -- If the non-basic variable is not bounded and it's coefficient is non-zero,
-          -- then pivot is always possible.
-          (Nothing, 1, _) -> True
-          (Nothing, -1, _) -> True
+          (0, _) -> False
+
           -- The value of the basic variable must be decreased. The coefficient of the non-basic
-          -- variable is positive, so we need to decrease it's value. The non-basic variable is
-          -- at it's upper bound so decreasing it is possible.
-          (Just UpperBound, 1, MustDecrease) -> True
+          -- variable is positive, so we need to decrease it's value. This is only possible if 
+          -- non-basic variable is above it's lower bound (or has none).
+          (1, MustDecrease) -> 
+            case non_basic_var_lower_bound of
+              Nothing -> True
+              Just lower_bound -> lower_bound < non_basic_var_current_value
+
           -- The value of the basic variable must be increased. The coefficient of the non-basic
-          -- variable is negative, so we need to decrease it's value. The non-basic variable is
-          -- at it's upper bound so decreasing it is possible.
-          (Just UpperBound, -1, MustIncrease) -> True
+          -- variable is negative, so we need to decrease it's value. This is only possible if 
+          -- non-basic variable is above it's lower bound (or has none).
+          (-1, MustIncrease) ->
+            case non_basic_var_lower_bound of
+              Nothing          -> True
+              Just lower_bound -> lower_bound < non_basic_var_current_value
+
           -- The value of the basic variable must be increased. The coefficient of the non-basic
-          -- variable is positive, so we need to increase it's value. The non-basic variable is
-          -- at it's lower bound so increasing it is possible.
-          (Just LowerBound, 1, MustIncrease) -> True
+          -- variable is positive, so we need to increase it's value. This is only possible if 
+          -- non-basic variable is below it's upper bound (or has none).
+          (1, MustIncrease) ->
+            case non_basic_var_upper_bound of
+              Nothing          -> True
+              Just upper_bound -> upper_bound > non_basic_var_current_value
+
           -- The value of the basic variable must be decreased. The coefficient of the non-basic
-          -- variable is negative, so we need to increase it's value. The non-basic variable is
-          -- at it's lower bound so increasing it is possible.
-          (Just LowerBound, -1, MustDecrease) -> True
+          -- variable is negative, so we need to increase it's value. This is only possible if 
+          -- non-basic variable is below it's upper bound (or has none).          
+          (-1, MustDecrease) ->
+            case non_basic_var_upper_bound of
+              Nothing          -> True
+              Just upper_bound -> upper_bound > non_basic_var_current_value
+
           -- In all other cases the bound of the non-basic variable would be violated by pivoting.
           all_other_cases -> False
 
@@ -212,20 +286,23 @@ pivot basic_var non_basic_var (Tableau basis bounds assignment) =
   immediately terminate.
 -}
 eliminateZeroRows :: Tableau -> Maybe Tableau
-eliminateZeroRows tableau@(Tableau basis bounds assignment) = 
-  let 
+eliminateZeroRows tableau@(Tableau basis bounds assignment)
+  | any (isBoundViolated tableau) (S.toList zero_row_slack_vars) = Nothing
+  | otherwise = Just tableau'
+  where
     (zero_rows, basis') = M.partition (all (== 0)) basis
     zero_row_slack_vars = M.keysSet zero_rows
+    tableau' =  Tableau
+      basis' 
+      (bounds `M.withoutKeys` zero_row_slack_vars)
+      (assignment `M.withoutKeys` zero_row_slack_vars)
 
-    violated_bounds = mapMaybe (boundViolation tableau) (S.toList zero_row_slack_vars)
-  in 
-    if null violated_bounds then
-      Just $ Tableau
-        basis' 
-        (bounds `M.withoutKeys` zero_row_slack_vars)
-        (assignment `M.withoutKeys` zero_row_slack_vars)
-    else
-      Nothing
+simplexSteps :: Tableau -> [Tableau]
+simplexSteps tableau = 
+  case pivotCandidates tableau of
+    [] -> [tableau]
+    ((basic_var, non_basic_var) : _) ->
+      tableau : simplexSteps (pivot basic_var non_basic_var tableau)
 
 {-|
   TODO:
@@ -233,24 +310,14 @@ eliminateZeroRows tableau@(Tableau basis bounds assignment) =
 -}
 simplex :: [Constraint] -> Maybe Assignment
 simplex constraints = do
-  let go :: Tableau -> Tableau
-      go tableau =
-        case pivotCandidates tableau of
-          [] -> tableau
-          ((basic_var, non_basic_var) : _) ->
-            go (pivot basic_var non_basic_var tableau)
+  tableau_0 <- initTableau constraints
+  let tableau_n = last $ simplexSteps tableau_0
+  guard $ null $ violatedBasicVars tableau_n
 
-  tableau_0 <- eliminateZeroRows $ initTableau constraints
-
-  let tableau_n = go tableau_0
-
-      original_vars = foldr (S.union . varsIn) S.empty constraints
+  let original_vars = foldr (S.union . varsIn) S.empty constraints
       assignment = M.restrictKeys (getAssignment tableau_n) original_vars
-  
-  if null (violatedBasicVars tableau_n) then 
-    Just assignment
-  else 
-    Nothing
+
+  return assignment
 
 -----------------------------------------------------------
 
@@ -273,3 +340,21 @@ example2 =
     )
   ]
 
+-- Cycle
+example3 =
+  [ ( AffineExpr   19 $ M.fromList [ (0, 29) ], LessEquals )
+  , ( AffineExpr   26 $ M.fromList [ (0, -26) ], LessEquals )
+  , ( AffineExpr (-6) $ M.fromList [ (0, -45), (1, 8) ], LessEquals )
+  , ( AffineExpr    7 $ M.fromList [ (0, -48), (1, 13) ], LessEquals )
+  , ( AffineExpr    0 $ M.fromList [ (0, 1), (1, 14) ], LessEquals )
+  , ( AffineExpr    1 $ M.fromList [ (1, 9) ], LessEquals )
+  ] 
+
+example4 =
+   [ ( AffineExpr (-1) $ M.fromList [ (0,1), (1,1) ], GreaterEquals )
+   , ( AffineExpr    0 $ M.fromList [ (0,1) ], LessEquals )
+   , ( AffineExpr    1 $ M.fromList [ (1,1) ], LessEquals )
+   , ( AffineExpr (-2) $ M.fromList [ (0,-3), (1,1) ], GreaterEquals )
+   , ( AffineExpr (-3) $ M.fromList [ (0,1), (1,-5) ], LessEquals )
+   , ( AffineExpr    0 $ M.fromList [ (0,2), (1,-5) ], LessEquals )
+   ]

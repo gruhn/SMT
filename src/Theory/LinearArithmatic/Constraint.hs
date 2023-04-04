@@ -67,7 +67,7 @@ instance Show AffineExpr where
         show_signed coeff ++ "*x" ++ show var
         
      in 
-      intercalate " + " (fmap show_var (M.toList coeff_map) ++ [show_signed constant])
+      intercalate " + " (fmap show_var (M.toList coeff_map) ++ [ show_signed constant | constant /= 0 ])
 
 varsIn :: Constraint -> S.IntSet
 varsIn (AffineExpr _ coeff_map, _) = M.keysSet coeff_map
@@ -130,7 +130,7 @@ substitute partial_assignment (AffineExpr constant coeff_map) =
 eval :: Assignment -> AffineExpr -> Maybe Rational
 eval assignment expr
   | M.null coeff_map = Just constant
-  | otherwise        = traceShow coeff_map Nothing
+  | otherwise        = Nothing
   where
     AffineExpr constant coeff_map = substitute assignment expr
 
