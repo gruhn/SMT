@@ -17,6 +17,10 @@ satWith sat =
 
 data Theory = PROP | UF | LIA | LRA | NRA
 
+x = Atom "x"
+y = Atom "y"
+z = Atom "z"
+
 -- | Enter and check formula for satisfiability.
 check :: Theory -> Expr String -> IO ()
 check PROP input = 
