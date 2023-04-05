@@ -78,8 +78,6 @@ tseytin = foldr And (aux_var 1) . snd . go 1 . eliminateConstants
         in  (j, eq : sub_ex)
       And ex1 ex2   -> go_binary i And ex1 ex2
       Or ex1 ex2    -> go_binary i Or ex1 ex2
-      Impl ex1 ex2  -> go_binary i Impl ex1 ex2
-      Equiv ex1 ex2 -> go_binary i Equiv ex1 ex2
 
     go_binary :: Int 
               -> (Expr (WithAux a) -> Expr (WithAux a) -> Expr (WithAux a)) 

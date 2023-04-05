@@ -18,8 +18,6 @@ get = M.findWithDefault False
   Not p         -> not (assign |= p)
   p1 `And` p2   -> (assign |= p1) && (assign |= p2)
   p1 `Or` p2    -> (assign |= p1) || (assign |= p2)
-  p1 `Impl` p2  -> (assign |= p1) <= (assign |= p2)
-  p1 `Equiv` p2 -> (assign |= p1) == (assign |= p2)
 
 ignoreAuxVars :: Ord a => Assignment (WithAux a) -> Assignment a
 ignoreAuxVars assignment = M.fromList $ do
