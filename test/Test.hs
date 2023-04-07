@@ -20,12 +20,13 @@ main = defaultMain $ checkParallel <$>
       [ ("Intervals never widen", prop_intervals_never_widen)
       , ("No roots are lost", prop_no_roots_are_lost)
       ]
-  , Group "Simplex / Fourier-Motzkin"
+  , Group "Linear Arithmatic"
     [ ("Fourier-Motzkin is sound", prop_fourier_motzkin_sound)
     , ("Fourier-Motzkin equivalent to Simplex", prop_fourier_motzkin_equiv_simplex)
     , ("Invariant: non-basic variables always satisfy their bounds", prop_invariant_non_basic_vars_satisfy_bounds)
     , ("Invariant: assignment matches basis evaluation", prop_invariant_assignment_matches_basis_evaluation)
-    , ("Simplex does not cycle", withTests 10000 $ prop_simplex_no_cycle)
-    , ("Simplex is sound", withTests 10000 $ prop_simplex_sound)
+    , ("Simplex does not cycle", prop_simplex_no_cycle)
+    , ("Simplex is sound", prop_simplex_sound)
+    , ("Branch-and-Bound is sound", prop_branch_and_bound_sound)
     ]
   ]
