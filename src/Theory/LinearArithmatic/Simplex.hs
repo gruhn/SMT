@@ -78,8 +78,13 @@ instance Show Tableau where
 initTableau :: [Constraint] -> Maybe Tableau
 initTableau constraints =
   let 
+    fresh_vars = 
+      case S.maxView $ varsInAll constraints of
+        Nothing           -> [0 ..]
+        Just (max_var, _) -> [max_var + 1 ..]
+
     (basis, bounds) = bimap M.fromList M.fromList $ unzip $ do
-      (slack_var, (affine_expr, relation)) <- zip (freshVariables constraints) constraints
+      (slack_var, (affine_expr, relation)) <- zip fresh_vars constraints
 
       let bound_type =
             case relation of

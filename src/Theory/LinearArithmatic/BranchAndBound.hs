@@ -21,21 +21,25 @@ findFractional vars state =  M.lookupMin
   $ M.restrictKeys (getAssignment $ getTableau state) vars
 
 data BBState = BB 
-  { getFreshVars :: [Var]
+  { getFreshVar :: Var
   , getTableau :: Tableau
   } deriving Show
 
 initState :: [Constraint] -> Maybe BBState
 initState constraints = do 
   tableau_0 <- initTableau constraints 
-  return $ BB (freshVariables constraints) tableau_0
+
+  let fresh_var =
+        case M.lookupMax $ getAssignment tableau_0 of
+          Nothing           -> 0
+          Just (max_var, _) -> max_var + 1
+
+  return $ BB fresh_var tableau_0
 
 branch :: Var -> Rational -> BoundType -> BBState -> BBState
-branch var frac_value bound_type (BB fresh_vars tableau) = 
+branch var frac_value bound_type (BB fresh_var tableau) = 
   let Tableau basis bounds assignment = tableau
-
-      fresh_var = head fresh_vars
-
+      
       int_value = 
         case bound_type of
           UpperBound -> fromIntegral $ floor frac_value
@@ -48,7 +52,7 @@ branch var frac_value bound_type (BB fresh_vars tableau) =
 
       fresh_var_value = fromJust $ eval assignment $ AffineExpr 0 tableau_row
       
-   in BB (tail fresh_vars) $ Tableau
+   in BB (fresh_var + 1) $ Tableau
       (M.insert fresh_var tableau_row basis)
       (M.insert fresh_var (bound_type, int_value) bounds)
       (M.insert fresh_var fresh_var_value assignment)
@@ -95,3 +99,6 @@ example =
   , (AffineExpr (-3/2) $ M.fromList [ (1,1) ], GreaterEquals )
   , (AffineExpr (-7/4) $ M.fromList [ (1,1) ], LessEquals )
   ]
+
+example2 = 
+  [ (AffineExpr 1 $ M.fromList [ (0,-2), (1,1) ], LessEquals ) ]

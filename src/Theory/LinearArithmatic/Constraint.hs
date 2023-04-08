@@ -167,10 +167,3 @@ isGround = M.null . getCoeffMap . fst
 -- | True iff constraint contains at least one free variable.
 isOpen :: Constraint -> Bool
 isOpen = not . isGround
-
--- | Infinite list of variable IDs that don't appear in the given constraints.
-freshVariables :: [Constraint] -> [Var]
-freshVariables constraints = 
-  let original_vars = varsInAll constraints
-      max_original_var = if S.null original_vars then -1 else S.findMax original_vars
-   in [max_original_var + 1 ..]
