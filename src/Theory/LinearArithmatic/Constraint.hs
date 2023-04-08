@@ -72,6 +72,9 @@ instance Show AffineExpr where
 varsIn :: Constraint -> S.IntSet
 varsIn (AffineExpr _ coeff_map, _) = M.keysSet coeff_map
 
+varsInAll :: [Constraint] -> S.IntSet
+varsInAll = foldr (S.union . varsIn) S.empty
+
 appearsIn :: Var -> Constraint -> Bool
 appearsIn var = M.member var . getCoeffMap . fst
 

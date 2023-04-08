@@ -5,6 +5,7 @@ module TestLinearArithmatic
   , prop_simplex_no_cycle
   , prop_invariant_non_basic_vars_satisfy_bounds
   , prop_invariant_assignment_matches_basis_evaluation  
+  , prop_branch_and_bound_sound
   ) where
 
 import Hedgehog hiding (Var, eval)
@@ -19,6 +20,7 @@ import Theory.LinearArithmatic.Constraint
 import Theory.LinearArithmatic.FourierMotzkin (fourierMotzkin)
 import Data.Maybe (isJust, fromMaybe)
 import Data.Set (Set)
+import Theory.LinearArithmatic.BranchAndBound (branchAndBound, isIntegral)
 
 -- TODO: generate more representative constraint sets 
 genConstraints :: Gen Var -> Range Int -> Gen [Constraint]
@@ -114,3 +116,16 @@ prop_invariant_assignment_matches_basis_evaluation = property $ do
   case simplexSteps <$> initTableau constraints of
     Nothing    -> success
     Just steps -> assert $ all check steps 
+
+prop_branch_and_bound_sound :: Property 
+prop_branch_and_bound_sound = property $ do
+  constraints <- forAll $ genConstraints 
+    (Gen.int $ Range.linear 0 20)
+    (Range.linear 1 50)
+
+  case branchAndBound constraints (varsInAll constraints) of
+    Nothing         -> success
+    Just assignment -> do 
+      annotate $ show assignment 
+      assert $ all (assignment `isModel`) constraints
+      assert $ all isIntegral assignment

@@ -58,7 +58,7 @@ partitionByBound constraints var =
 -}
 eliminate :: [Constraint] -> Maybe (Var, [Constraint])
 eliminate constraints = listToMaybe $ do
-  var <- S.toList $ S.unions $ varsIn <$> constraints
+  var <- S.toList $ varsInAll constraints
 
   let (lower_bounds, upper_bounds, constraints_without_var) = 
         partitionByBound constraints var

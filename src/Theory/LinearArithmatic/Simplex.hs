@@ -9,6 +9,8 @@ module Theory.LinearArithmatic.Simplex
   , initTableau
   , Tableau(..)
   , isBoundViolated
+  , BoundType(..)
+  , isSatisfied
   ) where
 
 import Control.Monad (guard)
@@ -76,9 +78,10 @@ instance Show Tableau where
 initTableau :: [Constraint] -> Maybe Tableau
 initTableau constraints =
   let 
-    original_vars = foldr (S.union . varsIn) S.empty constraints
-    max_original_var = if S.null original_vars then -1 else S.findMax original_vars
-    fresh_vars = [max_original_var + 1 ..]
+    fresh_vars = 
+      case S.maxView $ varsInAll constraints of
+        Nothing           -> [0 ..]
+        Just (max_var, _) -> [max_var + 1 ..]
 
     (basis, bounds) = bimap M.fromList M.fromList $ unzip $ do
       (slack_var, (affine_expr, relation)) <- zip fresh_vars constraints
@@ -94,6 +97,7 @@ initTableau constraints =
         , (slack_var, (bound_type, - getConstant affine_expr))
         )
 
+    original_vars = varsInAll constraints
     slack_vars = M.keys bounds
 
     assignment :: Assignment
@@ -297,6 +301,9 @@ eliminateZeroRows tableau@(Tableau basis bounds assignment)
       (bounds `M.withoutKeys` zero_row_slack_vars)
       (assignment `M.withoutKeys` zero_row_slack_vars)
 
+isSatisfied :: Tableau -> Bool
+isSatisfied = null . violatedBasicVars
+
 simplexSteps :: Tableau -> [Tableau]
 simplexSteps tableau = 
   case pivotCandidates tableau of
@@ -312,49 +319,9 @@ simplex :: [Constraint] -> Maybe Assignment
 simplex constraints = do
   tableau_0 <- initTableau constraints
   let tableau_n = last $ simplexSteps tableau_0
-  guard $ null $ violatedBasicVars tableau_n
+  guard $ isSatisfied tableau_n
 
-  let original_vars = foldr (S.union . varsIn) S.empty constraints
+  let original_vars = varsInAll constraints
       assignment = M.restrictKeys (getAssignment tableau_n) original_vars
 
   return assignment
-
------------------------------------------------------------
-
--- SAT
-example1 =
-  simplex
-    [ (AffineExpr (-3) $ M.fromList [(0, 1), (1, 1)], LessEquals)
-    , (AffineExpr (-1) $ M.fromList [(0, 1), (1, 1)], GreaterEquals)
-    , (AffineExpr (-3) $ M.fromList [(0, 1), (1, -1)], LessEquals)
-    , (AffineExpr (-1) $ M.fromList [(0, 1), (1, -1)], GreaterEquals)
-    ]
-
--- SAT
-example2 = 
-  [ ( AffineExpr
-       { getConstant = -100
-       , getCoeffMap = M.fromList [ ( 0 , -100) ]
-       }
-    , GreaterEquals
-    )
-  ]
-
--- Cycle
-example3 =
-  [ ( AffineExpr   19 $ M.fromList [ (0, 29) ], LessEquals )
-  , ( AffineExpr   26 $ M.fromList [ (0, -26) ], LessEquals )
-  , ( AffineExpr (-6) $ M.fromList [ (0, -45), (1, 8) ], LessEquals )
-  , ( AffineExpr    7 $ M.fromList [ (0, -48), (1, 13) ], LessEquals )
-  , ( AffineExpr    0 $ M.fromList [ (0, 1), (1, 14) ], LessEquals )
-  , ( AffineExpr    1 $ M.fromList [ (1, 9) ], LessEquals )
-  ] 
-
-example4 =
-   [ ( AffineExpr (-1) $ M.fromList [ (0,1), (1,1) ], GreaterEquals )
-   , ( AffineExpr    0 $ M.fromList [ (0,1) ], LessEquals )
-   , ( AffineExpr    1 $ M.fromList [ (1,1) ], LessEquals )
-   , ( AffineExpr (-2) $ M.fromList [ (0,-3), (1,1) ], GreaterEquals )
-   , ( AffineExpr (-3) $ M.fromList [ (0,1), (1,-5) ], LessEquals )
-   , ( AffineExpr    0 $ M.fromList [ (0,2), (1,-5) ], LessEquals )
-   ]
