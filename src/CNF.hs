@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE LambdaCase #-}
 module CNF where
 
 import Expression (Expr (..), negationNormalForm, eliminateConstants, (<==>))
