@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Theory.UninterpretedFunctions.Eager where
 
-import Expression (Expr (..), conjunct, negationNormalForm)
+import Expression (Expr (..), conjunct, negationNormalForm, (==>))
 import qualified Expression as Expr
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -96,8 +96,7 @@ encodeCongruence expr = conjunct $ (expr :) $ do
       all_args_equal = conjunct $ Atom <$>
         zipWith E (get_args term1) (get_args term2)
 
-  return $
-    all_args_equal `Impl` Atom (E term1 term2)
+  return $ all_args_equal ==> Atom (E term1 term2)
 
 -- See paper: "Yet Another Decision Procedure for Equality Logic"
 encodeTransitivity :: CNF Equality -> CNF Equality

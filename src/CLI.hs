@@ -17,8 +17,12 @@ satWith sat =
 
 data Theory = PROP | UF | LIA | LRA | NRA
 
+x = Atom "x"
+y = Atom "y"
+z = Atom "z"
+
 -- | Enter and check formula for satisfiability.
-check :: Theory -> String -> IO ()
+check :: Theory -> Expr String -> IO ()
 check PROP input = 
-  print $ satWith CDCL.sat (fromString input)
+  print $ satWith CDCL.sat input
 check _ _ = error "TODO: theory not supported yet"
