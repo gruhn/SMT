@@ -13,7 +13,7 @@ import Data.Maybe (listToMaybe)
 import Control.Monad (guard)
 import Control.Monad.State.Strict (State, runState, modify, gets, evalState)
 import Control.Monad.Extra (ifM)
-import Theory (Theory, Assignment)
+import Theory (Theory, Assignment, SolverResult (..))
 import qualified Theory
 
 {-| 
@@ -156,12 +156,13 @@ propagate =
    in getFormula >>= go . S.toList
 
 -- TODO: theory sovler has no state and has to recompute everything for each call
-cdcl :: (Theory t c, Ord t) => CDCLState t (Maybe (Assignment c))
+cdcl :: (Theory t c, Ord t) => CDCLState t (SolverResult t c)
 cdcl = do
   maybe_conflict <- propagate
   case maybe_conflict of
     Just conflict ->
-      ifM (resolveConflict conflict) cdcl (return Nothing)
+      ifM (resolveConflict conflict) cdcl (return (UNSAT conflict))
+
     Nothing -> do
       trail <- getTrail
       cnf <- getFormula
@@ -169,19 +170,24 @@ cdcl = do
       -- invoke theory solver
       case Theory.solve (fst <$> trail) of
         -- theory solver found conflicting subset ==> resolve conflict
-        Left conflict -> 
-          ifM (resolveConflict $ S.fromList conflict) cdcl (return Nothing)
+        Theory.UNSAT conflict -> 
+          ifM (resolveConflict conflict) cdcl (return (UNSAT conflict))
 
         -- constraints are satisfiable ==> hand back to SAT solver
-        Right assignment -> 
+        Theory.SAT assignment -> 
           case findUnassignedLiteral cnf trail of
             Nothing -> 
               -- all variables assinged ==> SAT              
-              return $ Just assignment 
+              return (SAT assignment)
+
             Just decision -> do
               modifyTrail ((decision, Nothing) :)
               cdcl      
 
-sat :: forall t c. (Theory t c, Ord t) => CNF t -> Maybe (Assignment c)
+        -- theory solver made no decision ==> ???
+        Theory.UNKNOWN -> 
+          error "TODO: handle UNKNOWN case in CDCL"
+
+sat :: forall t c. (Theory t c, Ord t) => CNF t -> SolverResult t c
 sat formula = evalState cdcl (formula, [])
 

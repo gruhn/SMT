@@ -13,7 +13,7 @@ import qualified Data.Set as S
 import Hedgehog hiding (Var, eval)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Theory ((|=))
+import Theory ((|=), SolverResult (..), isSAT)
 import qualified Theory
 import Theory.Propositions (Prop(..))
 
@@ -44,12 +44,12 @@ prop_cdcl_sound :: Property
 prop_cdcl_sound = property $ do
   cnf <- forAll genCNF
   case CDCL.sat cnf of
-    Nothing -> success
-    Just assignment -> do
+    UNSAT _ -> success
+    SAT assignment -> do
       annotate $ show assignment
       assert $ assignment |= cnf
 
 prop_dpll_equiv_cdcl :: Property
 prop_dpll_equiv_cdcl = property $ do
   cnf <- forAll genCNF
-  assert $ isJust (DPLL.sat cnf) == isJust (CDCL.sat cnf)
+  assert $ isJust (DPLL.sat cnf) == isSAT (CDCL.sat cnf)

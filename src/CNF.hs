@@ -38,16 +38,14 @@ complement (Neg name) = Pos name
 
 -- Partition literals based on polarity, i.e. collect all positive and all negative 
 -- literals and return as separate sets.
-polarityPartition :: Ord a => CNF a -> (S.Set a, S.Set a)
-polarityPartition cnf = (positives, negatives)
+polarityPartition :: Ord a => [Literal a] -> ([a], [a])
+polarityPartition literals = (positives, negatives)
   where
-    literals = toList $ S.unions $ toList cnf
-
-    positives = S.fromList $ literals >>= \case 
+    positives = literals >>= \case 
       Pos a -> [a]
       Neg _ -> []
 
-    negatives = S.fromList $ literals >>= \case 
+    negatives = literals >>= \case 
       Neg a -> [a]
       Pos _ -> []
 
@@ -130,25 +128,3 @@ conjunctiveNormalForm =
 
 variables :: Ord a => CNF a -> S.Set a
 variables = foldMap (S.map getVariable)
-
--- Convert CNF formula to String in DIMACS format. See:
--- https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html#dimacs-cnf
-showDIMACS :: Ord a => CNF a -> String
-showDIMACS cnf = unlines (header_line : clause_lines)
-  where
-    vars_indexed = M.fromList (zip vars indices)
-      where
-        vars = toList $ variables cnf
-        indices = show <$> [1 ..]
-
-    clause_count = length cnf
-    var_count    = length vars_indexed
-
-    header_line = "p cnf " <> show var_count <> " " <> show clause_count
-
-    show_var (Pos name) = vars_indexed M.! name
-    show_var (Neg name) = "-" <> vars_indexed M.! name
-
-    show_clause clause = unwords (show_var <$> toList clause)
-
-    clause_lines = (<> " 0") . show_clause <$> toList cnf

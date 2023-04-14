@@ -4,7 +4,7 @@ import Data.Foldable (toList, concatMap)
 import qualified Data.Set as S
 import Data.Set (Set)
 import Control.Exception (assert)
-import Data.List (uncons)
+import Data.List (uncons, tails)
 
 fixpoint :: Eq a => (a -> a) -> a -> a
 fixpoint f a
@@ -17,5 +17,6 @@ rightToMaybe = either (const Nothing) Just
 takeWhileJust :: [Maybe a] -> [a]
 takeWhileJust = catMaybes . takeWhile isJust
 
-distinct :: Ord a => [a] -> [a]
-distinct = toList . S.fromList
+combinations :: [a] -> [(a,a)]
+combinations []     = []
+combinations (a:as) = map (a,) as ++ combinations as
