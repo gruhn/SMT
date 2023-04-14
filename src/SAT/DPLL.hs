@@ -1,4 +1,4 @@
-module SAT.DPLL (dpll) where
+module SAT.DPLL (sat) where
 
 import Expression (Expr)
 import CNF (conjunctiveNormalForm, CNF, Literal (..), complement, Clause, variables)
@@ -7,10 +7,12 @@ import Data.Foldable (toList, find)
 import Data.Maybe (fromMaybe)
 import Control.Monad (liftM)
 import qualified Data.Map as M
-import qualified Assignment as Assign
-import Assignment (Assignment)
 import Control.Applicative ((<|>))
 import Control.Arrow (first)
+import Theory.Propositions (Prop)
+import qualified Theory
+import Theory (Assignment)
+import Utils (rightToMaybe)
 
 deleteLiteral :: Ord a => Literal a -> CNF a -> CNF a
 deleteLiteral = S.map . S.delete
@@ -54,7 +56,7 @@ pureLiteralElimination cnf = (toList pure_literals, cnf `deleteClausesContaining
       (positive_literals S.\\ S.map complement negative_literals)
       (negative_literals S.\\ S.map complement positive_literals)
 
-dpll :: Ord a => CNF a -> Maybe [Literal a]
+dpll :: CNF Prop -> Maybe [Literal Prop]
 dpll cnf_0 = ((unit_literals <> pure_literals) <>) <$> maybe_rest_literals
   where
     (unit_literals, cnf_1) = convergeUnitPropagation cnf_0
@@ -65,7 +67,7 @@ dpll cnf_0 = ((unit_literals <> pure_literals) <>) <$> maybe_rest_literals
     pick_literal :: CNF a -> Literal a
     pick_literal = S.findMin . S.findMin
 
-    split_and_recur :: Ord a => CNF a -> Maybe [Literal a]
+    split_and_recur :: CNF Prop -> Maybe [Literal Prop]
     split_and_recur cnf
       | null cnf     = Just []      -- derived empty clause set => SAT
       | any null cnf = Nothing      -- derived empty clause     => UNSAT
@@ -74,3 +76,8 @@ dpll cnf_0 = ((unit_literals <> pure_literals) <>) <$> maybe_rest_literals
         split_literal = pick_literal cnf
         cnf_left  = S.insert (S.singleton split_literal) cnf
         cnf_right = S.insert (S.singleton $ complement split_literal) cnf
+
+sat :: CNF Prop -> Maybe (Assignment Bool)
+sat cnf = do
+  literals <- dpll cnf
+  rightToMaybe $ Theory.solve literals
