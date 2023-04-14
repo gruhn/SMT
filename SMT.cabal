@@ -10,10 +10,8 @@ library
                     , Expression
                     , Assignment
                     , CNF
-                    , Algorithm.LinearResolution
-                    , Algorithm.DPLL
-                    -- , Algorithm.CDCL
-                    , Algorithm.CDCL2
+                    , SAT.DPLL
+                    , SAT.CDCL
                     , Theory.BitVectors
                     , Theory.UninterpretedFunctions.Lazy
                     , Theory.UninterpretedFunctions.Eager
@@ -52,6 +50,7 @@ test-suite test
     other-modules:    GameUnequal
                     , TestNonLinearRealArithmatic
                     , TestLinearArithmatic
+                    , TestSAT
     build-depends:    base
                     , SMT
                     , hedgehog

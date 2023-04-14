@@ -1,4 +1,4 @@
-module Algorithm.DPLL (sat) where
+module SAT.DPLL (dpll) where
 
 import Expression (Expr)
 import CNF (conjunctiveNormalForm, CNF, Literal (..), complement, Clause, variables)
@@ -11,9 +11,6 @@ import qualified Assignment as Assign
 import Assignment (Assignment)
 import Control.Applicative ((<|>))
 import Control.Arrow (first)
-
-sat :: Ord a => CNF a -> Maybe (Assignment a)
-sat cnf = Assign.fromLiteralList <$> dpll cnf
 
 deleteLiteral :: Ord a => Literal a -> CNF a -> CNF a
 deleteLiteral = S.map . S.delete
