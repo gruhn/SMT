@@ -1,4 +1,4 @@
-{-| Trivil theory just for boolean propositions -}
+{-| Trivial theory just for boolean propositions -}
 module Theory.Propositions where
 
 import Theory
@@ -16,7 +16,7 @@ toAssignment = M.fromList . fmap go
     go (Neg prop) = (getVar prop, False)
 
 instance Theory Prop Bool where
-  solve = Right . toAssignment
+  solve = Theory.SAT . toAssignment
 
   satisfies assignment (Pos (Prop var)) = 
     M.findWithDefault False var assignment

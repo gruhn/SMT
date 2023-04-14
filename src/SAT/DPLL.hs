@@ -80,4 +80,7 @@ dpll cnf_0 = ((unit_literals <> pure_literals) <>) <$> maybe_rest_literals
 sat :: CNF Prop -> Maybe (Assignment Bool)
 sat cnf = do
   literals <- dpll cnf
-  rightToMaybe $ Theory.solve literals
+  case Theory.solve literals of
+    Theory.SAT model -> Just model
+    Theory.UNSAT _   -> Nothing
+    Theory.UNKNOWN   -> Nothing
