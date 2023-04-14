@@ -8,10 +8,16 @@ import qualified Hedgehog.Range as Range
 
 import TestNonLinearRealArithmatic
 import TestLinearArithmatic
+import TestSAT
 
 main :: IO ()
 main = defaultMain $ checkParallel <$>
-  [ Group "Polynomial"
+  [ Group "SAT solver"
+    [ ("DPLL is sound", prop_dpll_sound) 
+    , ("CDCL is sound", withTests 1000 $ prop_cdcl_sound)
+    , ("DPLL equivalent to CDCL", withTests 1000 $ prop_dpll_equiv_cdcl)
+    ]
+  , Group "Polynomial"
       [ ("Coefficients are always non-zero", prop_all_coeffs_non_zero)
       , ("Exponents are always non-zero", prop_exponents_always_non_zero)
       , ("Monomials are pair-wise distinct", prop_unique_monomials)
