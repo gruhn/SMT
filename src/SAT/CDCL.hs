@@ -14,7 +14,7 @@ import Control.Monad (guard)
 import Control.Monad.State.Strict (State, runState, modify, gets, evalState)
 import Control.Monad.Extra (ifM)
 import Theory (Theory, Assignment)
-import qualified Theory as Theory
+import qualified Theory
 
 {-| 
   Sequence of literals that are assigned `true` at the current state.
@@ -38,18 +38,18 @@ decisionLevels trail =
     (decision_level_n, decision : rest_trail) -> 
        (decision_level_n ++ [decision]) : decisionLevels rest_trail
 
-type ADCLState a = State (CNF a, Trail a)
+type CDCLState a = State (CNF a, Trail a)
 
-getFormula :: ADCLState a (CNF a)
+getFormula :: CDCLState a (CNF a)
 getFormula = gets fst
 
-getTrail :: ADCLState a (Trail a)
+getTrail :: CDCLState a (Trail a)
 getTrail = gets snd
 
-modifyFormula :: (CNF a -> CNF a) -> ADCLState a ()
+modifyFormula :: (CNF a -> CNF a) -> CDCLState a ()
 modifyFormula f = modify $ first f
 
-modifyTrail :: (Trail a -> Trail a) -> ADCLState a ()
+modifyTrail :: (Trail a -> Trail a) -> CDCLState a ()
 modifyTrail f = modify $ second f
 
 findUnassignedLiteral :: forall a. Ord a => CNF a -> Trail a -> Maybe (Literal a)
@@ -78,7 +78,7 @@ trailLiterals = S.fromList . fmap fst
   by construction, the conflict clause always contains a literal from the decision level where 
   the conflict occured. So backtracking to the first matching decision level, is a no-op.
 -}
-backtrack :: forall a. Ord a => Clause a -> ADCLState a ()
+backtrack :: forall a. Ord a => Clause a -> CDCLState a ()
 backtrack conflict = do
   trail <- getTrail
   case decisionLevels trail of
@@ -92,7 +92,7 @@ backtrack conflict = do
 
       modifyTrail $ const $ concat $ dropWhile no_match rest_decision_levels
 
-resolveConflict :: Ord a => Clause a -> ADCLState a Bool
+resolveConflict :: Ord a => Clause a -> CDCLState a Bool
 resolveConflict conflict = do
   trail <- getTrail
 
@@ -120,9 +120,9 @@ isAsserting clause trail =
       let literals = S.fromList $ getVariable . fst <$> current_decision_level
        in length (literals `S.intersection` S.map getVariable clause) == 1
 
-propagate :: forall a. Ord a => ADCLState a (Maybe (Clause a))
+propagate :: forall a. Ord a => CDCLState a (Maybe (Clause a))
 propagate = 
-  let go :: [Clause a] -> ADCLState a (Maybe (Clause a))
+  let go :: [Clause a] -> CDCLState a (Maybe (Clause a))
       go clauses = do
         trail <- getTrail
 
@@ -155,8 +155,8 @@ propagate =
 
    in getFormula >>= go . S.toList
 
--- TODO: theory sovler has not state and has to recompute everything for each call
-cdcl :: (Theory t c, Ord t) => ADCLState t (Maybe (Assignment c))
+-- TODO: theory sovler has no state and has to recompute everything for each call
+cdcl :: (Theory t c, Ord t) => CDCLState t (Maybe (Assignment c))
 cdcl = do
   maybe_conflict <- propagate
   case maybe_conflict of
