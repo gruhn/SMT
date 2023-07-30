@@ -4,6 +4,7 @@ import CNF (Literal, CNF, Clause)
 import Data.IntMap (IntMap)
 import qualified Data.Set as S
 import Data.Set (Set)
+import Expression (Expr)
 
 type Assignment c = IntMap c
 
@@ -17,7 +18,7 @@ type Assignment c = IntMap c
   A theory solver can prove satisfiability (SAT) of given 
   constraints and return a model. It can also prove that the 
   constraints are unsatisfiable (UNSAT) and return a (preferably minimal) 
-  unsatisfiable subset of the constraints. If the solver is 
+  unsatisfiable subset of the constraints as an explanation. If the solver is 
   incomplete it may also make no decision either way and return UNKNOWN.
 -}
 data SolverResult t c = SAT (Assignment c) | UNSAT (Set (Literal t)) | UNKNOWN

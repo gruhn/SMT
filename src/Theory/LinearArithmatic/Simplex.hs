@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-|
   The Simplex method is sound, complete, and in pratice efficient for finding solutions
   to sets of linear constraints. All coefficients, bounds, and solutions are of type 
@@ -24,6 +25,10 @@ import Debug.Trace
 import Data.Foldable (find)
 import Data.List (intercalate)
 import Data.Ratio (numerator, denominator)
+import Theory (Theory (..), SolverResult (..), Assignment)
+import qualified CNF
+import qualified Data.Set as Set
+import Utils (maybeToRight)
 
 data BoundType = UpperBound | LowerBound
   deriving (Show, Eq)
@@ -31,7 +36,7 @@ data BoundType = UpperBound | LowerBound
 data Tableau = Tableau
   { getBasis :: M.IntMap LinearExpr
   , getBounds :: M.IntMap (BoundType, Rational)
-  , getAssignment :: Assignment
+  , getAssignment :: Assignment Rational
   }
 
 instance Show Tableau where
@@ -84,7 +89,7 @@ initTableau constraints =
         Just (max_var, _) -> [max_var + 1 ..]
 
     (basis, bounds) = bimap M.fromList M.fromList $ unzip $ do
-      (slack_var, (affine_expr, relation)) <- zip fresh_vars constraints
+      (slack_var, Constr affine_expr relation) <- zip fresh_vars constraints
 
       let bound_type =
             case relation of
@@ -100,7 +105,7 @@ initTableau constraints =
     original_vars = varsInAll constraints
     slack_vars = M.keys bounds
 
-    assignment :: Assignment
+    assignment :: Assignment Rational
     assignment =
       M.fromList $
         zip (S.toList original_vars ++ slack_vars) $
@@ -230,7 +235,13 @@ rewrite (x, expr_x) (y, expr_y) =
 -}
 solveFor' :: Equation -> Var -> Maybe Equation
 solveFor' (x, expr_x) y = do
-  let constraint = (AffineExpr 0 $ M.insert x (-1) expr_x, Equals)
+  -- We can define `solveFor'` in terms for `solveFor` because the derivation steps are
+  -- similar. `solveFor` expects a `Constraint` instance though with an inequality relation. 
+  -- We can choose an arbitrary one becaues we drop it anyway and it doesn't matter if the 
+  -- relation is flipped.
+  let dummy_rel = LessEquals
+
+  let constraint = Constr (AffineExpr 0 $ M.insert x (-1) expr_x) dummy_rel
   (_, _, AffineExpr _ expr_y) <- solveFor constraint y
   return (y, expr_y)
 
@@ -311,17 +322,36 @@ simplexSteps tableau =
     ((basic_var, non_basic_var) : _) ->
       tableau : simplexSteps (pivot basic_var non_basic_var tableau)
 
+minimalInfeasibleSubset :: Tableau -> [Constraint]
+minimalInfeasibleSubset tableau = error "TODO"
+
 {-|
   TODO:
     in case of UNSAT include explanation, i.e. minimal infeasible subset of constraints.
 -}
-simplex :: [Constraint] -> Maybe Assignment
+simplex :: [Constraint] -> Either [Constraint] (Assignment Rational)
 simplex constraints = do
-  tableau_0 <- initTableau constraints
-  let tableau_n = last $ simplexSteps tableau_0
-  guard $ isSatisfied tableau_n
+  initial_tableau <- maybeToRight constraints (initTableau constraints)
+  let final_tableau = last $ simplexSteps initial_tableau
 
-  let original_vars = varsInAll constraints
-      assignment = M.restrictKeys (getAssignment tableau_n) original_vars
+  if isSatisfied final_tableau then do
+    let original_vars = varsInAll constraints
+    let assignment = M.restrictKeys (getAssignment final_tableau) original_vars
+    Right assignment
+  else
+    Left (minimalInfeasibleSubset final_tableau)
 
-  return assignment
+eliminateNegation :: CNF.Literal Constraint -> Constraint
+eliminateNegation (CNF.Pos constr) = constr
+eliminateNegation (CNF.Neg (Constr expr rel)) = Constr expr (negateRelation rel)
+
+instance Theory Constraint Rational where
+  solve literals = 
+    case simplex (map eliminateNegation literals) of
+      Left conflict -> UNSAT $ Set.fromList $ map CNF.Pos conflict
+      Right model   -> SAT model
+
+  satisfies assignment (CNF.Pos constraint) = 
+    assignment `isModel` constraint
+  satisfies assignment (CNF.Neg constraint) = 
+    not (assignment `isModel` constraint)

@@ -7,38 +7,45 @@ import qualified Data.IntMap.Merge.Lazy as MM
 import Data.List (intercalate)
 import Data.Ratio (denominator, numerator)
 import Debug.Trace
+import Theory (Assignment)
 
 type Var = Int
 
-data ConstraintRelation = LessThan | LessEquals | Equals | GreaterEquals | GreaterThan
-  deriving (Show, Eq)
+data ConstraintRelation = LessThan | LessEquals | GreaterEquals | GreaterThan
+  deriving (Show, Eq, Ord)
 
 flipRelation :: ConstraintRelation -> ConstraintRelation
 flipRelation = \case 
   LessThan      -> GreaterThan
   LessEquals    -> GreaterEquals
-  Equals        -> Equals
   GreaterEquals -> LessEquals
   GreaterThan   -> LessThan
 
--- | Map from variable IDs to assigned values
-type Assignment = M.IntMap Rational
+negateRelation :: ConstraintRelation -> ConstraintRelation
+negateRelation = \case 
+  LessThan      -> GreaterEquals
+  LessEquals    -> GreaterThan
+  GreaterEquals -> LessThan
+  GreaterThan   -> LessEquals
 
 -- |
 -- For example, constraint such as `3x + y + 3 <= 0` is represented as:
 --
 --     (AffineExpr 3 (3x+y), LessEquals)
 -- 
-type Constraint = (AffineExpr, ConstraintRelation) 
+data Constraint = Constr { getExpr :: AffineExpr, getRaltion :: ConstraintRelation }
+  deriving (Eq, Ord)
+
+modifyExpr :: (AffineExpr -> AffineExpr) -> Constraint -> Constraint
+modifyExpr f (Constr expr rel) = Constr (f expr) rel
 
 {-|
   Remove variables with zero coefficient.
   TODO: ensure that constraints are always normalized.
 -}
 normalize :: Constraint -> Constraint
-normalize (AffineExpr constant expr, rel) = 
-  (AffineExpr constant $ M.filter (/= 0) expr, rel)
-
+normalize (Constr (AffineExpr constant expr) rel) = 
+  Constr (AffineExpr constant $ M.filter (/= 0) expr) rel
 
 -- | Map from variable IDs to coefficients 
 type LinearExpr = M.IntMap Rational
@@ -46,6 +53,7 @@ type LinearExpr = M.IntMap Rational
 data AffineExpr = AffineExpr
   { getConstant :: Rational  
   , getCoeffMap :: LinearExpr }
+  deriving (Eq, Ord)
 
 instance Show AffineExpr where
   show (AffineExpr constant coeff_map) =
@@ -70,13 +78,13 @@ instance Show AffineExpr where
       intercalate " + " (fmap show_var (M.toList coeff_map) ++ [ show_signed constant | constant /= 0 ])
 
 varsIn :: Constraint -> S.IntSet
-varsIn (AffineExpr _ coeff_map, _) = M.keysSet coeff_map
+varsIn (Constr (AffineExpr _ coeff_map) _) = M.keysSet coeff_map
 
 varsInAll :: [Constraint] -> S.IntSet
 varsInAll = foldr (S.union . varsIn) S.empty
 
 appearsIn :: Var -> Constraint -> Bool
-appearsIn var = M.member var . getCoeffMap . fst
+appearsIn var = M.member var . getCoeffMap . getExpr
 
 modifyConstant :: (Rational -> Rational) -> AffineExpr -> AffineExpr
 modifyConstant f (AffineExpr constant coeffs) = AffineExpr (f constant) coeffs
@@ -94,7 +102,7 @@ modifyConstant f (AffineExpr constant coeffs) = AffineExpr (f constant) coeffs
   expression or the coefficient is zero. 
 -}
 solveFor :: Constraint -> Var -> Maybe (Var, ConstraintRelation, AffineExpr)
-solveFor (AffineExpr constant coeffs, rel) x = do
+solveFor (Constr (AffineExpr constant coeffs) rel) x = do
   coeff_of_x <- M.lookup x coeffs
   guard (coeff_of_x /= 0)
 
@@ -110,7 +118,7 @@ solveFor (AffineExpr constant coeffs, rel) x = do
     -- get x on the other side:     -3x <= 10y - 1
     $ M.delete x coeffs
 
-substitute :: Assignment -> AffineExpr -> AffineExpr
+substitute :: Assignment Rational -> AffineExpr -> AffineExpr
 substitute partial_assignment (AffineExpr constant coeff_map) = 
   let 
     constant' = (constant +) $ sum $
@@ -130,7 +138,7 @@ substitute partial_assignment (AffineExpr constant coeff_map) =
   using the given assignment. Returns `Nothing` if the 
   assignment is partial.
 -}
-eval :: Assignment -> AffineExpr -> Maybe Rational
+eval :: Assignment Rational -> AffineExpr -> Maybe Rational
 eval assignment expr
   | M.null coeff_map = Just constant
   | otherwise        = Nothing
@@ -150,19 +158,18 @@ eval assignment expr
 {-|
   Checks if the assignment satisfies the constraints.
 -}
-isModel :: Assignment -> Constraint -> Bool
-isModel assignment (affine_expr, rel) = 
+isModel :: Assignment Rational -> Constraint -> Bool
+isModel assignment (Constr affine_expr rel) = 
   case (eval assignment affine_expr, rel) of 
     (Just value, LessThan     ) -> value <  0
     (Just value, LessEquals   ) -> value <= 0
-    (Just value, Equals       ) -> value == 0
     (Just value, GreaterEquals) -> value >= 0
     (Just value, GreaterThan  ) -> value >  0
     (Nothing   , _            ) -> False
 
 -- | True iff constraint contains no free variables
 isGround :: Constraint -> Bool
-isGround = M.null . getCoeffMap . fst 
+isGround = M.null . getCoeffMap . getExpr 
 
 -- | True iff constraint contains at least one free variable.
 isOpen :: Constraint -> Bool
