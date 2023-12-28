@@ -8,9 +8,18 @@ import qualified Data.IntMap as M
 import qualified Data.IntMap.Merge.Lazy as MM
 import Theory.NonLinearRealArithmatic.Constraint (Constraint, ConstraintRelation (..))
 import Theory.NonLinearRealArithmatic.Expr (Expr (..), Var, BinaryOp (..), substitute)
-import Theory.NonLinearRealArithmatic.Polynomial (Monomial, Polynomial (..), Assignment, Assignable (eval), Term (..), fromExpr, toExpr, varsIn)
+import Theory.NonLinearRealArithmatic.Polynomial
+    ( Monomial,
+      Polynomial(..),
+      Assignment,
+      Assignable(..),
+      Term(..),
+      fromExpr,
+      toExpr,
+      varsIn )
 import Control.Arrow ((&&&))
 import qualified Theory.NonLinearRealArithmatic.UnivariatePolynomial as Univariate
+import Control.Applicative (liftA2)
 
 {-|
   The frame of a polynomial is a set of points, obtained from the 
@@ -138,17 +147,41 @@ intermediateRoot polynomial neg_sol pos_sol =
   TODO: deal with multiple constraints
 -}
 subtropical :: forall a. (Ord a, Assignable a, Floating a) => Constraint a -> Maybe (Assignment a)
-subtropical (Equals, polynomial) =
+subtropical (relation, polynomial) =
   let
-    -- assignment that maps all variables to one
+    -- The assignment that maps all variables to one. We use it as an arbitrary 
+    -- starting point. 
     one :: Assignment a
     one = M.fromList $ map (, 1) (varsIn polynomial)
 
-    go :: Assignment a -> Polynomial a -> Maybe (Assignment a)
-    go neg_sol polynomial = intermediateRoot polynomial neg_sol <$> positiveSolution polynomial
+    -- An assignment for which the polynomial evaluates to something positive.
+    -- This is a `Maybe` since Polynomals may not have positve solutions. Additionally,
+    -- the algorithm implemented in `posiitveSolutions` is incomplete so it might
+    -- miss positive solutions, even if there are some.
+    pos_solution :: Maybe (Assignment a)
+    pos_solution 
+      | eval one polynomial > 0 = Just one
+      | otherwise = positiveSolution polynomial
+
+    -- An assignment for which the polynomial evaluates to something negative.
+    -- We can also use `positiveSolution` here because a positve solution of
+    -- the negated polynomial is a negative solution.
+    neg_solution :: Maybe (Assignment a)
+    neg_solution 
+      | eval one polynomial < 0 = Just one
+      | otherwise = positiveSolution (negate polynomial)
+
+    -- An assignment for which the polynomial evaluates to zero, i.e. a root.
+    -- With a negative solution and a positive solution, a root must lie 
+    -- on the line segment between the two points.
+    zero_solution :: Maybe (Assignment a)
+    zero_solution
+      | eval one polynomial == 0 = Just one
+      | otherwise = liftA2 (intermediateRoot polynomial) neg_solution pos_solution
   in
-    case eval one polynomial `compare` 0 of
-      LT -> go one polynomial
-      GT -> go one (negate polynomial)
-      EQ -> Just one
-subtropical _ = error "TODO: implement subtropical for inequality constraints"
+    case relation of
+      LessThan      -> neg_solution
+      LessEquals    -> neg_solution
+      GreaterEquals -> pos_solution
+      GreaterThan   -> pos_solution
+      Equals        -> zero_solution
