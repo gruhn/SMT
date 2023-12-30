@@ -70,7 +70,7 @@ eliminate constraints = listToMaybe $ do
         AffineExpr ub_const ub_coeffs <- upper_bounds
         AffineExpr lb_const lb_coeffs <- lower_bounds
         let left_hand_side = AffineExpr (lb_const - ub_const) (M.unionWith (+) lb_coeffs $ negate <$> ub_coeffs)
-        return $ normalize $ (left_hand_side, LessEquals)
+        return $ normalize $ Constr left_hand_side LessEquals
 
   return (var, constraints_without_var ++ constraints_with_var_eliminated)
 
@@ -93,17 +93,17 @@ fourierMotzkin = go . fmap normalize
 
           Just (next_var, constraints_without_var) -> do
             partial_assignment <- go constraints_without_var
-            let constraints' = first (substitute partial_assignment) <$> constraints_open
+            let constraints' = modifyExpr (substitute partial_assignment) <$> constraints_open
             return $ refine (M.insert next_var 0 partial_assignment) constraints'
 
     refine_with :: Constraint -> Var -> Assignment -> Assignment
-    refine_with (expr, rel) var assignment =
+    refine_with (Constr expr rel) var assignment =
       let 
         old_value = M.findWithDefault 0 var assignment
         assignment_no_value = M.delete var assignment
         assignment_old_value = M.insert var old_value assignment
       in
-        case (substitute assignment_no_value expr, rel) `solveFor` var of
+        case Constr (substitute assignment_no_value expr) rel `solveFor` var of
           Nothing -> assignment_old_value
           Just (_, LessEquals, AffineExpr new_value _) -> 
             if new_value < old_value then

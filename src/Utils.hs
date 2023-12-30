@@ -14,6 +14,10 @@ fixpoint f a
 rightToMaybe :: Either a b -> Maybe b
 rightToMaybe = either (const Nothing) Just
 
+maybeToRight :: a -> Maybe b -> Either a b
+maybeToRight a Nothing  = Left a
+maybeToRight _ (Just b) = Right b
+
 takeWhileJust :: [Maybe a] -> [a]
 takeWhileJust = catMaybes . takeWhile isJust
 
