@@ -8,8 +8,9 @@ import qualified Data.IntMap as M
 import qualified Data.IntMap.Merge.Lazy as MM
 import Theory.NonLinearRealArithmatic.Constraint (Constraint, ConstraintRelation (..))
 import Theory.NonLinearRealArithmatic.Expr (Expr (..), Var, BinaryOp (..), substitute)
-import Theory.NonLinearRealArithmatic.Polynomial
+import Theory.NonLinearRealArithmatic.Polynomial (Monomial, Polynomial (..), Assignment, Assignable (eval), Term (..), fromExpr, toExpr, varsIn)
 import Control.Arrow ((&&&))
+import qualified Theory.NonLinearRealArithmatic.UnivariatePolynomial as Univariate
 
 {-|
   The frame of a polynomial is a set of points, obtained from the 
@@ -114,19 +115,19 @@ intermediateRoot polynomial neg_sol pos_sol =
 
     t_roots :: [a]
     t_roots =
-      case toUnivariate t_polynomial of
+      case Univariate.toList <$> Univariate.fromPolynomial t_polynomial of
         Nothing -> error "Polynomial should be univariate by construction"
         -- linear polynomial ==> solve directly for t
-        Just [ (0, c), (1, b) ] -> [ - b/c ]
+        Just [ (0, c), (1, b) ] -> [- b/c ]
         -- quadratic polynomial ==> apply quadratic formula
-        Just [ (0, c), (1, b), (2, a) ] -> 
+        Just [ (0, c), (1, b), (2, a) ] ->
           [ (-b + sqrt (b^2 - 4*a*c)) / (2*a)
           , (-b - sqrt (b^2 - 4*a*c)) / (2*a) ]
         -- TODO: higher degree polynomial ==> use bisection?
         Just higher_degree_polynomial -> error "TODO: subtropical does not support higher degree polynomials yet"
 
     t_solution :: Assignment a
-    t_solution = 
+    t_solution =
       case L.find (\t' -> 0 <= t' && t' <= 1) t_roots of
         Just value -> M.singleton t value
         Nothing -> error "No solution for t between 0 and 1"
@@ -141,7 +142,7 @@ subtropical (Equals, polynomial) =
   let
     -- assignment that maps all variables to one
     one :: Assignment a
-    one = M.fromList $ zip (varsIn polynomial) (repeat 1)
+    one = M.fromList $ map (, 1) (varsIn polynomial)
 
     go :: Assignment a -> Polynomial a -> Maybe (Assignment a)
     go neg_sol polynomial = intermediateRoot polynomial neg_sol <$> positiveSolution polynomial

@@ -20,3 +20,15 @@ takeWhileJust = catMaybes . takeWhile isJust
 combinations :: [a] -> [(a,a)]
 combinations []     = []
 combinations (a:as) = map (a,) as ++ combinations as
+
+assertM :: Monad m => Bool -> m ()
+assertM condition
+  | condition = return ()
+  | otherwise = error "assertion failure"
+
+count :: (a -> Bool) -> [a] -> Int
+count p = length . filter p
+
+adjacentPairs :: [a] -> [(a, a)]
+adjacentPairs as = zip as (tail as)
+

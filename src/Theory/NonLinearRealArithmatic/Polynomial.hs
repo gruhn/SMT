@@ -7,6 +7,7 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , Monomial
   , mkPolynomial
   , exponentOf
+  , coefficientOf
   , Term(..)
   , modifyCoeff
   , modifyMonomial
@@ -16,16 +17,11 @@ module Theory.NonLinearRealArithmatic.Polynomial
   , fromExpr
   , toExpr
   , map
-  , degree
-  , termDegree
   , Assignable(..)
   , Assignment
-  , UnivariatePolynomial
-  , toUnivariate
   ) where
 
 import Theory.NonLinearRealArithmatic.Expr (Expr(..), Var, BinaryOp(..), UnaryOp(..))
-import qualified Data.List as L
 import qualified Data.IntMap as M
 import qualified Data.IntSet as S
 import qualified Data.List as List
@@ -33,9 +29,10 @@ import Data.IntMap ( IntMap )
 import Data.Function ( on )
 import Data.Containers.ListUtils ( nubOrd )
 import Control.Monad ( guard )
-import Data.Maybe ( maybeToList )
+import Data.Maybe ( maybeToList, fromMaybe )
 import Prelude hiding (map)
 import Control.Arrow ((&&&))
+import Control.Exception (assert)
 
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
@@ -62,6 +59,10 @@ modifyMonomial :: (Monomial -> Monomial) -> Term a -> Term a
 modifyMonomial f (Term coeff monomial) = Term coeff (f monomial)
 
 newtype Polynomial a = Polynomial { getTerms :: [Term a] }
+
+coefficientOf :: Num a => Monomial -> Polynomial a -> a
+coefficientOf monomial = 
+  maybe 0 getCoeff . List.find ((== monomial) . getMonomial) . getTerms
 
 {-|
   In a normalized polynomial:
@@ -223,23 +224,6 @@ isLinear monomial = is_zero || is_unit
     is_zero = null non_zero_exponents
     is_unit = [1] == non_zero_exponents
 
-termDegree :: Term a -> Int
-termDegree = sum . getMonomial
-
-degree :: (Num a, Ord a) => Polynomial a -> Int
-degree = maximum . fmap termDegree . getTerms
-
--- TODO: does that make sense for multivariate polynomials?
-cauchyBound :: (Fractional a, Ord a) => Polynomial a -> a
-cauchyBound polynomial = 1 + maximum [ abs (coeff / top_coeff) | coeff <- coeffs ]
-  where
-    -- Extract highest degree term with non-zero coefficient.
-    (top_coeff : coeffs) =
-        filter (/= 0)
-      $ fmap getCoeff
-      $ List.sortOn (negate . termDegree)
-      $ getTerms polynomial
-
 varsIn :: Polynomial a -> [Var]
 varsIn (Polynomial terms) =
   nubOrd (terms >>= M.keys . getMonomial)
@@ -272,17 +256,3 @@ class Num a => Assignable a where
   eval :: Assignment a -> Polynomial a -> a
   eval assignment polynomial = sum (evalTerm assignment <$> getTerms polynomial)
 
-type UnivariatePolynomial a = [ (Int, a) ]
-
-{-| 
-  Extracts list of exponent/coefficient pairs, sorted by exponent. 
-  Returns Nothing, if the polynomial is multivariate.
--}
-toUnivariate :: Polynomial a -> Maybe (UnivariatePolynomial a)
-toUnivariate polynomial =
-  case varsIn polynomial of
-    [ var ] -> Just 
-      $ L.sortOn fst 
-      $ fmap (exponentOf var . getMonomial &&& getCoeff)
-      $ getTerms polynomial
-    zero_or_two_or_more_vars -> Nothing

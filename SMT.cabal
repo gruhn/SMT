@@ -24,6 +24,7 @@ library
                     , Theory.NonLinearRealArithmatic.Interval
                     , Theory.NonLinearRealArithmatic.IntervalUnion
                     , Theory.NonLinearRealArithmatic.Polynomial
+                    , Theory.NonLinearRealArithmatic.UnivariatePolynomial
                     , Theory.NonLinearRealArithmatic.Constraint
                     , Theory.NonLinearRealArithmatic.BoundedFloating
                     , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
