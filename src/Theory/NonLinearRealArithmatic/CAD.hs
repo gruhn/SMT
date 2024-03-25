@@ -116,8 +116,8 @@ split = \case
       , Closed end   end 
       ] 
 
-isolateRoots :: forall a. (Fractional a, Ord a, Show a) => UnivariatePolynomial a -> [Interval a]
-isolateRoots polynomial = concatMap go $ maybeToList $ cauchyBound polynomial
+isolateRootsIn :: forall a. (Fractional a, Ord a, Show a) => Interval a -> UnivariatePolynomial a -> [Interval a]
+isolateRootsIn initial_interval polynomial = go initial_interval
   where
     sturm_seq = sturmSequence polynomial
 
@@ -129,3 +129,9 @@ isolateRoots polynomial = concatMap go $ maybeToList $ cauchyBound polynomial
       | otherwise = undefined
       where
         root_count = countRootsIn sturm_seq interval
+
+isolateRoots :: forall a. (Fractional a, Ord a, Show a) => UnivariatePolynomial a -> [Interval a]
+isolateRoots polynomial =
+  case cauchyBound polynomial of
+    Nothing       -> []
+    Just interval -> isolateRootsIn interval polynomial

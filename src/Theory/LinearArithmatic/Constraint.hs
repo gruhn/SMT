@@ -47,6 +47,16 @@ data AffineExpr = AffineExpr
   { getConstant :: Rational  
   , getCoeffMap :: LinearExpr }
 
+instance Num AffineExpr where
+  AffineExpr constA coeffsA + AffineExpr constB coeffsB = 
+    AffineExpr (constA+constB) (M.unionWith (+) coeffsA coeffsB)
+  (*) = error "AffineExpr not closed under multiplication"
+  abs = error "TODO"
+  signum = error "TODO"
+  fromInteger n = AffineExpr (fromInteger n) M.empty
+  negate (AffineExpr constant coeffs) = 
+    AffineExpr (negate constant) (M.map negate coeffs)
+
 instance Show AffineExpr where
   show (AffineExpr constant coeff_map) =
     let 

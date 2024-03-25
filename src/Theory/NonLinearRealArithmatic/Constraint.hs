@@ -1,4 +1,3 @@
-
 module Theory.NonLinearRealArithmatic.Constraint 
   ( Constraint
   , ConstraintRelation(..)

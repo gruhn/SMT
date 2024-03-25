@@ -33,6 +33,7 @@ import Data.Maybe ( maybeToList, fromMaybe )
 import Prelude hiding (map)
 import Control.Arrow ((&&&))
 import Control.Exception (assert)
+import qualified Theory.LinearArithmatic.Constraint as LIA
 
 -- | Map of variables to integer exponents.
 type Monomial = IntMap Int
@@ -256,3 +257,33 @@ class Num a => Assignable a where
   eval :: Assignment a -> Polynomial a -> a
   eval assignment polynomial = sum (evalTerm assignment <$> getTerms polynomial)
 
+type UnivariatePolynomial a = [ (Int, a) ]
+
+{-| 
+  Extracts list of exponent/coefficient pairs, sorted by exponent. 
+  Returns Nothing, if the polynomial is multivariate.
+-}
+toUnivariate :: Polynomial a -> Maybe (UnivariatePolynomial a)
+toUnivariate polynomial =
+  case varsIn polynomial of
+    [ var ] -> Just 
+      $ List.sortOn fst 
+      $ fmap (exponentOf var . getMonomial &&& getCoeff)
+      $ getTerms polynomial
+    zero_or_two_or_more_vars -> Nothing
+
+-- | If possible, converts polynomial to affine expression. Otherwise returns `Nothing`.
+toAffineExpr :: Polynomial Rational -> Maybe LIA.AffineExpr
+toAffineExpr (Polynomial terms) = 
+  let
+    from_term :: Term Rational -> Maybe LIA.AffineExpr
+    from_term (Term coeff monomial) = 
+      case M.toList monomial of
+        -- constant term:
+        [] -> Just $ LIA.AffineExpr coeff M.empty
+        -- single variable with exponent one:
+        [ (1, var) ] -> Just $ LIA.AffineExpr 0 (M.singleton var coeff)
+        -- more than one variable and/or exponents greater one:
+        _non_affine_term -> Nothing
+  in
+    sum <$> traverse from_term terms

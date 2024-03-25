@@ -50,7 +50,7 @@ frame polynomial = undefined -- TODO
       $ L.filter ((/= 0) . getCoeff) (getTerms polynomial)
 
 findDominatingDirection :: (Num a, Ord a) => Polynomial a -> Maybe (Assignment Int)
-findDominatingDirection terms = undefined
+findDominatingDirection terms = error "TODO: compute using Simplex"
   where
     pos_terms = filter ((> 0) . getCoeff) (getTerms terms)
 
@@ -132,7 +132,7 @@ intermediateRoot polynomial neg_sol pos_sol =
         Just [ (0, c), (1, b), (2, a) ] ->
           [ (-b + sqrt (b^2 - 4*a*c)) / (2*a)
           , (-b - sqrt (b^2 - 4*a*c)) / (2*a) ]
-        -- TODO: higher degree polynomial ==> use bisection?
+        -- TODO: higher degree polynomial ==> use CAD
         Just higher_degree_polynomial -> error "TODO: subtropical does not support higher degree polynomials yet"
 
     t_solution :: Assignment a
