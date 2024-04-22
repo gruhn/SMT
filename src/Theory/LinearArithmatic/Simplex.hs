@@ -115,16 +115,12 @@ boundViolation (Tableau basis bounds assignment) var = do
   let current_value = assignment M.! var
   bound <- M.lookup var bounds
   case bound of 
-    (UpperBound, bound_value) ->
-      if current_value <= bound_value then
-        Nothing
-      else 
-        Just MustDecrease
-    (LowerBound, bound_value) -> do
-      if bound_value <= current_value then
-        Nothing
-      else
-        Just MustIncrease
+    (UpperBound, bound_value) 
+      | current_value <= bound_value -> Nothing
+      | otherwise                    -> Just MustDecrease
+    (LowerBound, bound_value)
+      | bound_value <= current_value -> Nothing
+      | otherwise                    -> Just MustIncrease
 
 isBoundViolated :: Tableau -> Var -> Bool
 isBoundViolated tableau var = isJust $ boundViolation tableau var

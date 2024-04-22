@@ -195,16 +195,12 @@ contractWith (constraint, var) var_domains = new_domain
         Equals        -> max lower_bound lower_bound' :..: min upper_bound upper_bound'
         LessEquals    -> lower_bound :..: min upper_bound upper_bound'
         GreaterEquals -> max lower_bound lower_bound' :..: upper_bound
-        LessThan      -> 
-          if lower_bound >= upper_bound' then
-            Interval.empty
-          else 
-            lower_bound :..: min upper_bound upper_bound'
-        GreaterThan   -> 
-          if upper_bound <= lower_bound' then 
-            Interval.empty
-          else 
-            max lower_bound lower_bound' :..: upper_bound
+        LessThan 
+          | lower_bound >= upper_bound' -> Interval.empty
+          | otherwise                   -> lower_bound :..: min upper_bound upper_bound'
+        GreaterThan 
+          | upper_bound <= lower_bound' -> Interval.empty
+          | otherwise                   -> max lower_bound lower_bound' :..: upper_bound
 
     old_domain = var_domains M.! var
     new_domain = IntervalUnion.reduce $ IntervalUnion $ do

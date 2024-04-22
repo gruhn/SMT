@@ -119,9 +119,8 @@ divide dividend divisor = go 0 dividend
 
         (Nothing, _) -> (quotient, 0)
 
-        (Just (rem_exp, rem_coeff), Just (div_exp, div_coeff)) -> 
-          if rem_exp < div_exp then
-            (quotient, remainder)
-          else
+        (Just (rem_exp, rem_coeff), Just (div_exp, div_coeff))
+          | rem_exp < div_exp -> (quotient, remainder)
+          | otherwise ->
             let quot_term = term (rem_exp - div_exp) (rem_coeff / div_coeff)
             in go (quotient + quot_term) (remainder - quot_term * divisor)

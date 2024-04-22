@@ -35,10 +35,9 @@ varsIn expr = case expr of
 substitute :: Var -> Expr a -> Expr a -> Expr a
 substitute var expr_subst_with expr_subst_in = 
   case expr_subst_in of
-    Const _ -> 
-      expr_subst_in
-    Var var' -> 
-      if var == var' then expr_subst_with else expr_subst_in
+    Const _ -> expr_subst_in
+    Var var' | var == var' -> expr_subst_with
+    Var _    | otherwise   -> expr_subst_in
     UnaryOp op sub_expr -> 
       UnaryOp op (substitute var expr_subst_with sub_expr)
     BinaryOp op sub_expr1 sub_expr2 -> 

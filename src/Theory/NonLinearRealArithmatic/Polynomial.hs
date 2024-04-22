@@ -188,13 +188,10 @@ fromExpr expr =
 
     UnaryOp (Exp n) (Const a) -> Polynomial [ Term (a^n) M.empty ]
     UnaryOp (Exp n) (Var var) -> Polynomial [ Term 1 (M.singleton var n) ]
-    UnaryOp (Exp n) expr ->
-      if n < 1 then
-        error "Non-positive exponents not supported"
-      else if n == 1 then
-        fromExpr expr
-      else
-        fromExpr $ BinaryOp Mul expr (UnaryOp (Exp (n-1)) expr)
+    UnaryOp (Exp n) expr 
+      | n < 1     -> error "Non-positive exponents not supported"
+      | n == 1    -> fromExpr expr
+      | otherwise -> fromExpr $ BinaryOp Mul expr (UnaryOp (Exp (n-1)) expr)
 
     BinaryOp Add expr1 expr2 -> fromExpr expr1 + fromExpr expr2
     BinaryOp Sub expr1 expr2 -> fromExpr expr1 - fromExpr expr2
