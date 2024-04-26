@@ -38,7 +38,7 @@ partitionByBound constraints var =
     combine (as1, as2, as3) (bs1, bs2, bs3) =
       (as1 ++ bs1, as2 ++ bs2, as3 ++ bs3)
   in
-    foldr combine ([], [], []) $ go <$> constraints
+    foldr (combine . go) ([], [], []) constraints
 
 {-|
   Identifies a variable that has both upper- and lower bounds, if one exists, as in
@@ -70,12 +70,18 @@ eliminate constraints = listToMaybe $ do
         AffineExpr ub_const ub_coeffs <- upper_bounds
         AffineExpr lb_const lb_coeffs <- lower_bounds
         let left_hand_side = AffineExpr (lb_const - ub_const) (M.unionWith (+) lb_coeffs $ negate <$> ub_coeffs)
-        return $ normalize $ (left_hand_side, LessEquals)
+        return $ normalize (left_hand_side, LessEquals)
 
   return (var, constraints_without_var ++ constraints_with_var_eliminated)
 
+-- | TODO: a bit ad-hoc way to deal with equlities by just turing them into two inequalities.
+-- I feel like there is a better way.
+replaceEqualities :: Constraint -> [Constraint] 
+replaceEqualities (expr, Equals) = [ (expr, LessEquals), (expr, GreaterEquals) ]
+replaceEqualities constraint     = [ constraint ]
+
 fourierMotzkin :: [Constraint] -> Maybe Assignment
-fourierMotzkin = go . fmap normalize
+fourierMotzkin = go . concatMap (replaceEqualities . normalize)
   where
     go :: [Constraint] -> Maybe Assignment
     go constraints = do

@@ -36,8 +36,12 @@ main = defaultMain $ checkParallel <$> [
       ("Fourier-Motzkin equivalent to Simplex", prop_fourier_motzkin_equiv_simplex),
       ("Invariant: non-basic variables always satisfy their bounds", prop_invariant_non_basic_vars_satisfy_bounds),
       ("Invariant: assignment matches basis evaluation", prop_invariant_assignment_matches_basis_evaluation),
+      ("Invariant: basic and non-basic variables are disjoint", prop_invariant_disjoint_basic_and_nonbasic_vars),
+      -- TODO: Invariant: slack variables are always negative, original variables always non-negative
       ("Simplex does not cycle", prop_simplex_no_cycle),
       ("Simplex is sound", prop_simplex_sound),
+      ("Simplex with cutting planes is sound", prop_simplex_sound_with_cutting_plane),
       ("Branch-and-Bound is sound", prop_branch_and_bound_sound)
+      -- ("Branch-and-Bound terminates quickly", prop_branch_and_bound_terminates_quickly)
     ]
   ]

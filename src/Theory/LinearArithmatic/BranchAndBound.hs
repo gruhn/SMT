@@ -1,104 +1,116 @@
-module Theory.LinearArithmatic.BranchAndBound 
+module Theory.LinearArithmatic.BranchAndBound
   ( branchAndBound
   , isIntegral
+  , steps
+  , isSat
   ) where
 
-import Theory.LinearArithmatic.Simplex ( simplexSteps, initTableau, Tableau(..), BoundType(..), isSatisfied )
+import qualified Theory.LinearArithmatic.Simplex as Simplex
+import Theory.LinearArithmatic.Simplex (Tableau, BoundType(..))
 import Theory.LinearArithmatic.Constraint
-import Data.Ratio (denominator, numerator)
+import Data.Ratio (denominator, numerator, (%))
 import qualified Data.IntSet as S
 import qualified Data.IntMap as M
 import Control.Applicative ((<|>))
 import Data.Maybe (fromJust)
+import Utils (takeUntil, firstJust)
 
 isIntegral :: Rational -> Bool
-isIntegral rational = 
+isIntegral rational =
   numerator rational `mod` denominator rational == 0
 
-findFractional :: S.IntSet -> BBState -> Maybe (Var, Rational)
-findFractional vars state =  M.lookupMin 
-  $ M.filter (not . isIntegral)
-  $ M.restrictKeys (getAssignment $ getTableau state) vars
+findFractional :: S.IntSet -> Tableau -> Maybe (Var, Rational)
+findFractional vars tableau =
+  M.lookupMin
+    $ M.filter (not . isIntegral)
+    $ M.restrictKeys (Simplex.getAssignment tableau) vars
 
-data BBState = BB 
-  { getFreshVar :: Var
-  , getTableau :: Tableau
-  } deriving Show
+branchOn :: Var -> Rational -> Tableau -> (Tableau, Tableau)
+branchOn var frac_value tableau =
+  let
+    left_branch :: Tableau
+    left_branch = 
+      Simplex.addTableauRow
+        (AffineExpr (- fromIntegral (floor frac_value)) (M.singleton var 1))
+        UpperBound
+        tableau
 
-initState :: [Constraint] -> Maybe BBState
-initState constraints = do 
-  tableau_0 <- initTableau constraints 
+    right_branch :: Tableau
+    right_branch = 
+      Simplex.addTableauRow
+        (AffineExpr (- fromIntegral (ceiling frac_value)) (M.singleton var 1))
+        LowerBound
+        tableau
+  in
+    (left_branch, right_branch)
 
-  let fresh_var =
-        case M.lookupMax $ getAssignment tableau_0 of
-          Nothing           -> 0
-          Just (max_var, _) -> max_var + 1
-
-  return $ BB fresh_var tableau_0
-
-branch :: Var -> Rational -> BoundType -> BBState -> BBState
-branch var frac_value bound_type (BB fresh_var tableau) = 
-  let Tableau basis bounds assignment = tableau
-      
-      int_value = 
-        case bound_type of
-          UpperBound -> fromIntegral $ floor frac_value
-          LowerBound -> fromIntegral $ ceiling frac_value
-
-      tableau_row =
-        case M.lookup var basis of
-          Just expr -> expr
-          Nothing   -> M.singleton var 1
-
-      fresh_var_value = fromJust $ eval assignment $ AffineExpr 0 tableau_row
-      
-   in BB (fresh_var + 1) $ Tableau
-      (M.insert fresh_var tableau_row basis)
-      (M.insert fresh_var (bound_type, int_value) bounds)
-      (M.insert fresh_var fresh_var_value assignment)
-
-solveRelaxation :: BBState -> Maybe BBState
-solveRelaxation (BB fresh_var tableau)
-  | isSatisfied tableau' = Just $ BB fresh_var tableau'
+solveRelaxation :: Tableau -> Maybe Tableau
+solveRelaxation tableau
+  | Simplex.isSatisfied tableau' = Just tableau'
   | otherwise = Nothing
   where
-    tableau' = last $ simplexSteps tableau 
+    tableau' = last $ Simplex.steps tableau
 
+data BBState = Sat Assignment | Pending Tableau
+
+steps :: [Constraint] -> S.IntSet -> [BBState] 
+steps constraints int_vars = 
+  let 
+    original_vars = varsInAll constraints
+
+    get_model :: Tableau -> Assignment
+    get_model tableau = M.restrictKeys (Simplex.getAssignment tableau) original_vars
+
+    go :: BBState -> [BBState]
+    go (Sat _)           = []
+    go (Pending tableau) = Pending tableau : 
+      case solveRelaxation tableau of
+        Nothing -> []
+        Just tableau_next -> 
+          case findFractional int_vars tableau_next of
+            Nothing                -> [ Sat (get_model tableau_next) ]
+            Just (var, frac_value) -> 
+              let 
+                (left_branch, right_branch) = branchOn var frac_value tableau_next
+              in
+                go (Pending left_branch) <|> go (Pending right_branch)
+  in
+    maybe [] (go . Pending) $ Simplex.initTableau constraints
+
+isSat :: BBState -> Maybe Assignment
+isSat (Sat model) = Just model
+isSat _           = Nothing
+
+{-|
+  TODO: 
+    * Currently incomplete, i.e. algorithm may not terminate on some inputs.
+      - especially equality constraints
+    * Constraint preprocessing: 
+      - remove redundant constraints
+      - tighten bounds
+
+-}
 branchAndBound :: [Constraint] -> S.IntSet -> Maybe Assignment
-branchAndBound constraints int_vars = do
-  let original_vars = varsInAll constraints
-
-      restrict :: Assignment -> Assignment
-      restrict assignment = M.restrictKeys assignment original_vars
-
-      go :: BBState -> Maybe BBState
-      go state = do
-        state' <- solveRelaxation state
-        case findFractional int_vars state' of
-          Nothing                -> Just state'
-          Just (var, frac_value) -> go left_branch <|> go right_branch
-            where
-              left_branch = branch var frac_value UpperBound state'
-              right_branch = branch var frac_value LowerBound state'
-
-  state_0 <- initState constraints 
-  state_n <- go state_0
-
-  case findFractional int_vars state_n of
-    Nothing -> Just $ restrict $ getAssignment $ getTableau state_n
-    Just _  -> Nothing
+branchAndBound constraints int_vars = 
+  firstJust isSat $ steps constraints int_vars
 
 --------------------
 
-example = 
-  [ (AffineExpr (-2)   $ M.fromList [ (0,1), (1,1) ], GreaterEquals )
-  , (AffineExpr (-1/2) $ M.fromList [ (0, 1), (1, -1)], LessEquals )
-  , (AffineExpr (-1) $ M.fromList [ (0, 1) ], LessEquals )
-  , (AffineExpr 1      $ M.fromList [ (0, 1), (1, -1)], GreaterEquals )
-  , (AffineExpr (-3/2) $ M.fromList [ (0,1) ], LessEquals )
-  , (AffineExpr (-3/2) $ M.fromList [ (1,1) ], GreaterEquals )
-  , (AffineExpr (-7/4) $ M.fromList [ (1,1) ], LessEquals )
+example =
+  [ (AffineExpr (-2)   $ M.fromList [ (0,1), (1,1) ]   , GreaterEquals )
+  , (AffineExpr (-1/2) $ M.fromList [ (0, 1), (1, -1)] , LessEquals    )
+  , (AffineExpr (-1)   $ M.fromList [ (0, 1) ]         , LessEquals    )
+  , (AffineExpr 1      $ M.fromList [ (0, 1), (1, -1)] , GreaterEquals )
+  , (AffineExpr (-3/2) $ M.fromList [ (0,1) ]          , LessEquals    )
+  , (AffineExpr (-3/2) $ M.fromList [ (1,1) ]          , GreaterEquals )
+  , (AffineExpr (-7/4) $ M.fromList [ (1,1) ]          , LessEquals    )
   ]
 
-example2 = 
+example2 =
   [ (AffineExpr 1 $ M.fromList [ (0,-2), (1,1) ], LessEquals ) ]
+
+example3 = 
+  [ ( AffineExpr (-1) (M.fromList [(0,3),(1,-3)]), GreaterEquals )
+  , ( AffineExpr 0 (M.singleton 0 1), LessEquals)
+  , ( AffineExpr 1 (M.singleton 1 1), LessEquals)
+  ]

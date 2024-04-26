@@ -57,6 +57,26 @@ instance Num AffineExpr where
   negate (AffineExpr constant coeffs) = 
     AffineExpr (negate constant) (M.map negate coeffs)
 
+-- | Construct `Equals` constraint.
+(.==) :: AffineExpr -> AffineExpr -> Constraint
+(.==) lhs_expr rhs_expr = (lhs_expr - rhs_expr, Equals)
+
+-- | Construct `LessEquals` constraint.
+(.<=) :: AffineExpr -> AffineExpr -> Constraint
+(.<=) lhs_expr rhs_expr = (lhs_expr - rhs_expr, LessEquals)
+
+-- | Construct `GreaterEquals` constraint.
+(.>=) :: AffineExpr -> AffineExpr -> Constraint
+(.>=) lhs_expr rhs_expr = (lhs_expr - rhs_expr, GreaterEquals)
+
+-- | Construct `GreaterThan` constraint.
+(.>) :: AffineExpr -> AffineExpr -> Constraint
+(.>) lhs_expr rhs_expr = (lhs_expr - rhs_expr, GreaterThan)
+
+-- | Construct `LessThan` constraint.
+(.<) :: AffineExpr -> AffineExpr -> Constraint
+(.<) lhs_expr rhs_expr = (lhs_expr - rhs_expr, LessThan)
+
 instance Show AffineExpr where
   show (AffineExpr constant coeff_map) =
     let 
@@ -74,10 +94,17 @@ instance Show AffineExpr where
           show_ratio ratio
 
       show_var (var, coeff) = 
-        show_signed coeff ++ "*x" ++ show var
+        if coeff == 1 then
+          "x" ++ show var
+        else 
+          show_signed coeff ++ "*x" ++ show var
         
+      terms_showed :: [String]
+      terms_showed = fmap show_var (M.toList coeff_map) ++ [ show_signed constant | constant /= 0 ]
      in 
-      intercalate " + " (fmap show_var (M.toList coeff_map) ++ [ show_signed constant | constant /= 0 ])
+      case terms_showed of
+        [] -> "0"
+        _  -> intercalate "+" terms_showed
 
 varsIn :: Constraint -> S.IntSet
 varsIn (AffineExpr _ coeff_map, _) = M.keysSet coeff_map
