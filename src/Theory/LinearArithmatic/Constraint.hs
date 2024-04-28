@@ -62,9 +62,19 @@ instance Num AffineExpr where
   negate (AffineExpr constant coeffs) = 
     AffineExpr (negate constant) (M.map negate coeffs)
 
+-- Same precedence as the usual comparison operators (==, <=, ...).
+-- Otherwise arithmatic expressions have to be bracketed, 
+-- e.g. like this: `(x + y) .<= 3`.
+infix 4 .==
+infix 4 .<=
+infix 4 .>=
+infix 4 .>
+infix 4 .<
+
 -- | Construct `Equals` constraint.
 (.==) :: AffineExpr -> AffineExpr -> Constraint
 (.==) lhs_expr rhs_expr = (lhs_expr - rhs_expr, Equals)
+
 
 -- | Construct `LessEquals` constraint.
 (.<=) :: AffineExpr -> AffineExpr -> Constraint
