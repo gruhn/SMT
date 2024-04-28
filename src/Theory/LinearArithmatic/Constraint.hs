@@ -50,7 +50,12 @@ data AffineExpr = AffineExpr
 instance Num AffineExpr where
   AffineExpr constA coeffsA + AffineExpr constB coeffsB = 
     AffineExpr (constA+constB) (M.unionWith (+) coeffsA coeffsB)
-  (*) = error "AffineExpr not closed under multiplication"
+
+  AffineExpr constA coeffsA * AffineExpr constB coeffsB
+    | M.null coeffsA = AffineExpr (constA*constB) (M.map (constA*) coeffsB)
+    | M.null coeffsB = AffineExpr (constA*constB) (M.map (constB*) coeffsA)
+    | otherwise      = error "Can't multiply two non-constant AffineExpr because the result is not affine."
+
   abs = error "TODO"
   signum = error "TODO"
   fromInteger n = AffineExpr (fromInteger n) M.empty
