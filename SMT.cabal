@@ -1,67 +1,89 @@
-cabal-version:      2.4
+cabal-version:      3.0
 name:               SMT
 version:            0.1.0.0
 author:             Niklas Gruhn
 maintainer:         niklas@gruhn.me
 extra-source-files: CHANGELOG.md
 
-library
-    exposed-modules:  Expression
-                    , Assignment
-                    , CNF
-                    , SAT.DPLL
-                    , SAT.CDCL
-                    , Theory
-                    , Theory.Propositions
-                    , Theory.BitVectors
-                    , Theory.UninterpretedFunctions
-                    , Theory.UninterpretedFunctions.EDSL
-                    , Theory.LinearArithmatic.Constraint
-                    , Theory.LinearArithmatic.FourierMotzkin
-                    , Theory.LinearArithmatic.Simplex
-                    , Theory.LinearArithmatic.BranchAndBound
-                    , Theory.NonLinearRealArithmatic.Expr
-                    , Theory.NonLinearRealArithmatic.Interval
-                    , Theory.NonLinearRealArithmatic.IntervalUnion
-                    , Theory.NonLinearRealArithmatic.Polynomial
-                    , Theory.NonLinearRealArithmatic.UnivariatePolynomial
-                    , Theory.NonLinearRealArithmatic.Constraint
-                    , Theory.NonLinearRealArithmatic.BoundedFloating
-                    , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
-                    , Theory.NonLinearRealArithmatic.Subtropical
-                    , Theory.NonLinearRealArithmatic.VirtualSubstitution
-                    , Theory.NonLinearRealArithmatic.CAD
-    other-modules:    Utils
-    build-depends:    base
-                    , megaparsec
-                    , containers
-                    , parser-combinators
-                    , mtl
-                    , extra
-                    , vector
-                    , search-algorithms
-    hs-source-dirs:   src
+common config
+    ghc-options: -Wall -Wno-unrecognised-pragmas -Wno-unused-do-bind -Wno-unused-top-binds
     default-language: Haskell2010
     default-extensions: 
-        ScopedTypeVariables
-      , LambdaCase
-      , StrictData
-      , TupleSections
-      , MultiParamTypeClasses
-      , FunctionalDependencies 
+      ScopedTypeVariables
+      LambdaCase
+      StrictData
+      TupleSections
+      OverloadedRecordDot
+      NumericUnderscores
+      DuplicateRecordFields
+    build-depends: 
+        base
+      , containers
+
+library
+  import: config
+  exposed-modules: 
+      Expression
+    , Assignment
+    , CNF
+    , SAT.DPLL
+    , SAT.CDCL
+    , Theory
+    , Theory.Propositions
+    , Theory.BitVectors
+    , Theory.UninterpretedFunctions
+    , Theory.UninterpretedFunctions.EDSL
+    , Theory.LinearArithmatic.Constraint
+    , Theory.LinearArithmatic.FourierMotzkin
+    , Theory.LinearArithmatic.Simplex
+    , Theory.LinearArithmatic.BranchAndBound
+    , Theory.NonLinearRealArithmatic.Expr
+    , Theory.NonLinearRealArithmatic.Interval
+    , Theory.NonLinearRealArithmatic.IntervalUnion
+    , Theory.NonLinearRealArithmatic.Polynomial
+    , Theory.NonLinearRealArithmatic.UnivariatePolynomial
+    , Theory.NonLinearRealArithmatic.Constraint
+    , Theory.NonLinearRealArithmatic.BoundedFloating
+    , Theory.NonLinearRealArithmatic.IntervalConstraintPropagation
+    , Theory.NonLinearRealArithmatic.Subtropical
+    , Theory.NonLinearRealArithmatic.VirtualSubstitution
+    , Theory.NonLinearRealArithmatic.CAD
+  other-modules: Utils
+  build-depends: 
+      megaparsec
+    , parser-combinators
+    , containers
+    , mtl
+    , extra
+    , vector
+    , search-algorithms
+  hs-source-dirs: src
+  default-extensions:   
+      MultiParamTypeClasses
+    , FunctionalDependencies 
 
 test-suite test
-    type:             exitcode-stdio-1.0 
-    main-is:          Test.hs
-    other-modules:    TestUninterpretedFunctions
-                    , TestNonLinearRealArithmatic
-                    , TestLinearArithmatic
-                    , TestSAT
-    build-depends:    base
-                    , SMT
-                    , hedgehog
-                    , containers
-    hs-source-dirs:   test
-    default-language: Haskell2010
-    default-extensions: StrictData
-                      , ScopedTypeVariables
+  import: config
+  hs-source-dirs: test
+  type: exitcode-stdio-1.0 
+  main-is: Test.hs
+  other-modules:   
+      TestUninterpretedFunctions
+    , TestNonLinearRealArithmatic
+    , TestLinearArithmatic
+    , TestSAT
+  build-depends:
+      SMT
+    , hedgehog
+
+executable app
+  import: config
+  hs-source-dirs: app
+  main-is: Main.hs
+  other-modules:
+    SMT2Parser
+  build-depends: 
+      SMT
+    , megaparsec
+    , parser-combinators
+
